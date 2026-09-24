@@ -339,6 +339,48 @@ registration. Every gap above has a disposition; upstream rows become issues aga
 - On fixtures, correctly infers `[1, 2].first` → `Integer`, `hash.each { |k, v| }` → `k` and `v` typed, and `str.split(",").map(&:strip)` → `Array<String>` (stretch goal).
 - A cold start with 200 gems doesn't block requests. A warm start loads the gem cache in under 2 s in the background.
 
+### 8.1 M3 implementation notes (2026-09-24)
+- **RBS environment (FR-M3-01).** `RubyLsp::Yard::Rbs::Loader` builds an `RBS::Environment` for core plus every
+  stdlib library shipped by the `rbs` gem (~940 classes, ~120 ms measured) in a background thread at activation
+  (NFR-P1) and is cancellable on `deactivate`. `Rbs::Converter` maps RBS types to the internal model:
+  interfaces become `Duck`s, aliases expand with a depth cap, intersections are approximated as unions, records
+  become `HashOf`s with literal keys, and `untyped`/`any` map to `UNTYPED`.
+- **RBS wins over YARD (FR-M3-04, D5).** `SignatureStore` asks the RBS source first for the requested owner and,
+  in the ancestor walk, before each ancestor's YARD definitions. Owners absent from the RBS environment
+  (workspace classes) keep their YARD definitions, so documented `self.new` overrides still work.
+- **Generics (FR-M3-02).** `Types::TypeVar` and `Types.substitute_type_vars` were added; `Resolution::Member`
+  carries the receiver's type arguments; `Signature#type_params`/`#method_type_params` are populated by the RBS
+  source and bound at the call site by the engine and by completion/hover label rendering. `Hash#each`'s single
+  tuple yield destructures into `|k, v|`.
+- **Block returns (FR-M3-03).** `Array#map`'s method type variable binds to the block's last expression, and
+  `&:sym` blocks look the method up on the element type. Block parameter bindings are threaded through
+  inference and the pass runs inside the existing 20 ms/8-call budget.
+- **Gem caching (FR-M3-05/06, D9).** `Gems::Locator` maps definition paths to bundled gems; `Gems::Cache`
+  stores built signatures per gem and version under `~/.cache/ruby-lsp-yard/<schema>/` with atomic writes and a
+  `Gemfile.lock` digest embedded in each payload, so a changed lock invalidates it. Gems excluded from Ruby
+  LSP's own indexing never reach the store, satisfying FR-M3-06 by construction. The cache is read per gem on
+  first use instead of being warmed up front, so a cold start never blocks and a warm start loads only the gems
+  it touches in microseconds. `Locator` ignores `.rbs` paths, which carry no YARD comments. Writes are batched
+  (first signature per gem immediately, then at most every 32 writes or 2 s, plus on `deactivate`) so enriching
+  a completion does not rewrite the payload per method.
+- **Readiness invalidation.** Signatures resolved while the RBS environment was still loading would otherwise be
+  memoized against their YARD/host fallback for the session. `Loader#subscribe`/`Source#subscribe` notify the
+  signature store when the environment is published and the store drops its caches, so `RBS wins` applies even
+  to core methods looked up during the load window.
+- **FR-M3-07** (`rbs collection`) is deferred to M7 with the rest of the D5 ecosystem work. RBS intersections
+  and records are approximated, and core go-to-definition still points at the `rbs` gem's `.rbs` files because
+  the host index supplies those locations.
+- **Hover** substitutes the receiver's generic arguments through `Engine#signature_for`, so core methods render
+  `def first() → Integer` rather than `→ E`.
+- **Testing and benchmarks.** `test/corpus/test_m3_corpus.rb` asserts the acceptance cases; `benchmark/rbs.rb`
+  measures environment build and lookup latency, and `benchmark/inference.rb` adds generic core and block-return
+  cases.
+- **Cache trust model.** `Marshal.load` has no class allowlist on Ruby 3.4/4.0 (`permitted_classes:` is not a
+  supported keyword), so the payload is treated as trusted user-local state: written atomically by the add-on,
+  read only from the user's own cache directory, with the payload version and `Gemfile.lock` digest validated
+  before any signature is returned. A tampered cache file is equivalent to tampering with any other file in the
+  user's home directory.
+
 ---
 
 ## 9. Milestone M4 — YARD authoring support
@@ -448,7 +490,7 @@ registration. Every gap above has a disposition; upstream rows become issues aga
 | **D6** | How closely to match Solargraph | None · `@type` inline only · `@type` + `.solargraph.yml` domains | *Still open:* `@type` inline deferred from M2 to M7 (§7.5), `.solargraph.yml` in M7 |
 | **D7** | Completion when the receiver type is unknown; handling `nil` and `Object` | Show nothing · Leave it to Ruby LSP's default behavior · Guess from method names | Leave it to Ruby LSP; leave `nil` out of unions; treat `Object` as unknown |
 | **D8** | How much inference follows control flow | Assignments only (union) · Narrowing on `nil` checks, `is_a?` and `case`/`when` | Union in M2; narrowing as a later M3 stretch goal |
-| **D9** | Which gems to read and where to cache | All bundled gems · An allowlist · None · Cache in `.ruby-lsp/` vs `~/.cache` | All gems except those excluded in Ruby LSP's indexing config; cache in `~/.cache/<name>` shared across projects |
+| **D9** ✅ | Which gems to read and where to cache | All bundled gems · An allowlist · None · Cache in `.ruby-lsp/` vs `~/.cache` | **Decided:** every gem the host indexes (Ruby LSP's exclusions apply by construction); cache in `~/.cache/ruby-lsp-yard/<schema>/` shared across projects, keyed by gem name/version, invalidated by a `Gemfile.lock` digest (§8.1) |
 | **D10** | Diagnostics defaults and suppression syntax | See the table in §10 | As in the table; `# yard:disable` |
 | **D11** ✅ | Minimum Ruby version | **Decided:** 3.4 (3.1–3.3 dropped; diverges from Ruby LSP's own minimum, which is lower) | — |
 | **D12** | Gem name and license | `ruby-lsp-yard` · other | `ruby-lsp-yard`, MIT (check the name is free on RubyGems) |

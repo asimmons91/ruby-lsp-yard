@@ -8,7 +8,9 @@ module RubyLsp
       # whether the result came from YARD inference or from Ruby LSP's own inferrer, so listeners only narrow host
       # results when the add-on actually knows better (FR-M2-19).
       class Resolution
-        Member = Struct.new(:owner, :singleton, :label)
+        # `type_args` carries the receiver's generic arguments (FR-M3-02), e.g. `Array[String]#` resolves to
+        # `Member(owner: "Array", type_args: [Instance("String")])` so RBS type variables can be substituted.
+        Member = Struct.new(:owner, :singleton, :label, :type_args)
 
         attr_reader :members, :duck_methods, :source
 

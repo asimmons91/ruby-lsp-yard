@@ -1,5 +1,20 @@
 ## [Unreleased]
 
+- M3: load RBS core and stdlib signatures in a background thread and convert them into the internal type model
+  (overloads, generics, block signatures, optional/keyword parameters, interfaces as duck types); `rbs` is now an
+  explicit runtime dependency (FR-M3-01)
+- M3: substitute RBS type variables at the call site — `[1, 2].first` → `Integer`, `"a,b".split(",")` →
+  `Array<String>` — and prefer RBS signatures over YARD for core/stdlib owners (FR-M3-02, FR-M3-04)
+- M3: infer block return types for `Array#map` with block bodies and `&:symbol` blocks (`map(&:strip)` →
+  `Array<String>`), and destructure `Hash#each`'s tuple yield into `|k, v|` (FR-M3-03)
+- M3: hash literals carry key/value unions so RBS generics bind (`{a: 1}` is `Hash[Symbol, Integer]`), and hover
+  and completion label details render substituted generics (FR-M3-02)
+- M3: parse YARD comments in dependency gems lazily and persist built signatures to a shared
+  `~/.cache/ruby-lsp-yard/<schema>/` cache keyed by gem name/version, invalidated by a `Gemfile.lock` digest
+  (FR-M3-05, FR-M3-06, D9)
+- M3: add the `enableCoreTypes` setting, the M3 acceptance corpus, RBS/gem unit tests, core completion and hover
+  integration tests, and `benchmark/rbs.rb`
+- M3: record the implementation notes in `docs/requirements_v1.md` §8.1; FR-M3-07 (`rbs collection`) is deferred
 - M2: infer receiver types from literals, constants, `self`, `@param` types, local assignments, instance variables,
   `Foo.new`, call chains (`@return [self]`), `@yieldparam` block parameters, unions and duck types, with a fixed
   20 ms/8-call budget and Unknown fallbacks

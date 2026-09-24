@@ -12,6 +12,7 @@ module RubyLsp
           def format(type)
             case type
             when Unknown then "untyped"
+            when TypeVar then type.name.to_s
             when Special then format_special(type)
             when Ref then type.name
             when Instance then format_instance(type)

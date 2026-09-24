@@ -40,6 +40,33 @@ module RubyLsp
           nil
         end
 
+        # Simple block parameters of `block` as `[name, kind]` pairs, for inference that starts at the call node
+        # rather than inside the block (FR-M3-03). Destructured parameters are skipped.
+        def self.block_parameters_for(block)
+          return [] unless block.is_a?(Prism::BlockNode)
+
+          parameters = block.parameters
+          return [] unless parameters.is_a?(Prism::BlockParametersNode)
+
+          list = parameters.parameters
+          return [] unless list.is_a?(Prism::ParametersNode)
+
+          result = []
+          list.requireds.each { |parameter| append_parameter(result, parameter, :required) }
+          list.optionals.each { |parameter| append_parameter(result, parameter, :optional) }
+          append_parameter(result, list.rest, :rest)
+          list.keywords.each { |parameter| append_parameter(result, parameter, :keyword) }
+          append_parameter(result, list.keyword_rest, :keyword_rest)
+          append_parameter(result, list.block, :block)
+          result
+        end
+
+        def self.append_parameter(result, parameter, kind)
+          return unless parameter.respond_to?(:name) && parameter.name
+
+          result << [parameter.name.to_s, kind]
+        end
+
         def initialize(node_context, log: nil)
           @log = log
           @nesting_nodes = self.class.nesting_nodes(node_context)
@@ -88,31 +115,10 @@ module RubyLsp
         # Simple block parameters as `[name, kind]` pairs. Destructured parameters are skipped.
         def block_parameters
           block = @nesting_nodes&.reverse_each&.find { |node| node.is_a?(Prism::BlockNode) }
-          return [] unless block
-
-          parameters = block.parameters
-          return [] unless parameters.is_a?(Prism::BlockParametersNode)
-
-          list = parameters.parameters
-          return [] unless list.is_a?(Prism::ParametersNode)
-
-          result = []
-          list.requireds.each { |parameter| append_parameter(result, parameter, :required) }
-          list.optionals.each { |parameter| append_parameter(result, parameter, :optional) }
-          append_parameter(result, list.rest, :rest)
-          list.keywords.each { |parameter| append_parameter(result, parameter, :keyword) }
-          append_parameter(result, list.keyword_rest, :keyword_rest)
-          append_parameter(result, list.block, :block)
-          result
+          self.class.block_parameters_for(block)
         end
 
         private
-
-        def append_parameter(result, parameter, kind)
-          return unless parameter.respond_to?(:name) && parameter.name
-
-          result << [parameter.name.to_s, kind]
-        end
 
         # Innermost first. Lambdas can read the locals of the scopes that enclose them, so the walk continues past
         # them; defs and class bodies cannot, so the walk stops there.

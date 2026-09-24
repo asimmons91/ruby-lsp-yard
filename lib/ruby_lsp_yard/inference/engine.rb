@@ -36,6 +36,27 @@ module RubyLsp
           nil
         end
 
+        # The signature for the call in `node_context`, with the receiver's generic arguments substituted so hover
+        # shows `Array<Integer>#first → Integer` instead of `→ E` (FR-M3-02). Nil when it cannot be resolved.
+        def signature_for(node_context)
+          node = node_context&.node
+          return nil unless node.is_a?(Prism::CallNode)
+
+          message = node.message.to_s
+          return nil if message.empty?
+
+          member = resolution_for(node_context)&.primary
+          return nil unless member
+
+          signature = @store.lookup(member.owner, message, singleton: member.singleton)
+          return nil unless signature
+
+          signature.with_type_bindings(type_bindings(signature, member))
+        rescue => e
+          log_failure("signature_for", e)
+          nil
+        end
+
         # Resolves the receiver of the call in `node_context` into indexable owners or duck methods (FR-M2-09/10).
         def resolution_for(node_context)
           node = node_context&.node
@@ -71,7 +92,9 @@ module RubyLsp
           Budget.new(timeout_ms: @budget_ms)
         end
 
-        def infer(node, ctx, budget, scope, depth = 0)
+        # `bindings` carries block parameter types while inferring a call's block body from the call node
+        # (FR-M3-03); it is nil for ordinary inference.
+        def infer(node, ctx, budget, scope, depth = 0, bindings = nil)
           budget.check!(depth)
           node = unwrap(node)
           return Types::UNKNOWN unless node
@@ -90,9 +113,9 @@ module RubyLsp
           when Prism::ImaginaryNode
             instance("Complex")
           when Prism::ArrayNode
-            instance("Array", array_type_args(node, ctx, budget, scope, depth))
+            instance("Array", array_type_args(node, ctx, budget, scope, depth, bindings))
           when Prism::HashNode, Prism::KeywordHashNode
-            instance("Hash")
+            hash_type(node, ctx, budget, scope, depth, bindings)
           when Prism::RangeNode
             instance("Range")
           when Prism::RegularExpressionNode, Prism::InterpolatedRegularExpressionNode
@@ -108,11 +131,11 @@ module RubyLsp
           when Prism::ConstantReadNode, Prism::ConstantPathNode
             constant_type(node, ctx)
           when Prism::LocalVariableReadNode
-            local_type(node.name.to_s, node, ctx, budget, scope, depth)
+            local_type(node.name.to_s, node, ctx, budget, scope, depth, bindings)
           when Prism::InstanceVariableReadNode
-            ivar_type(node.name.to_s, ctx, budget, scope, depth)
+            ivar_type(node.name.to_s, ctx, budget, scope, depth, bindings)
           when Prism::CallNode
-            call_type(node, ctx, budget, scope, depth)
+            call_type(node, ctx, budget, scope, depth, bindings)
           else
             Types::UNKNOWN
           end
@@ -125,10 +148,10 @@ module RubyLsp
           resolved ? Types::Singleton.new(resolved) : Types::UNKNOWN
         end
 
-        def call_type(node, ctx, budget, scope, depth)
+        def call_type(node, ctx, budget, scope, depth, bindings)
           budget.check!(depth + 1)
           receiver = unwrap(node.receiver)
-          receiver_type = receiver ? infer(receiver, ctx, budget, scope, depth + 1) : self_type(ctx)
+          receiver_type = receiver ? infer(receiver, ctx, budget, scope, depth + 1, bindings) : self_type(ctx)
 
           return new_type(receiver_type, ctx) if node.message == "new" && !Types.unknown?(receiver_type)
 
@@ -155,7 +178,12 @@ module RubyLsp
             next unless signature
             next if Types.unknown?(signature.return_types)
 
-            substitute_self(signature.return_types, receiver_type)
+            type = substitute_self(signature.return_types, receiver_type)
+            type = substitute_type_vars(type, type_bindings(signature, member))
+            type = bind_block_return(node, ctx, budget, scope, depth, member, signature, type)
+            next unless usable?(type)
+
+            type
           end
 
           returns.empty? ? Types::UNKNOWN : Types.union(returns)
@@ -168,7 +196,7 @@ module RubyLsp
 
           instance = Types::Instance.new(member.owner)
           signature = @store.lookup(member.owner, "new", singleton: true)
-          if signature && !Types.unknown?(signature.return_types) && !HOST_DEFAULT_OWNERS.include?(signature.owner)
+          if signature && usable?(signature.return_types) && !HOST_DEFAULT_OWNERS.include?(signature.owner)
             # `@return [self]` on `self.new` means the constructed instance, not the class object.
             substitute_self(signature.return_types, instance)
           else
@@ -176,7 +204,10 @@ module RubyLsp
           end
         end
 
-        def local_type(name, node, ctx, budget, scope, depth)
+        def local_type(name, node, ctx, budget, scope, depth, bindings)
+          bound = bindings&.[](name)
+          return bound if usable?(bound)
+
           parameter = parameter_type(name, ctx)
           return parameter if usable?(parameter)
 
@@ -185,7 +216,7 @@ module RubyLsp
 
           scope ||= ScopeIndex.new(ctx, log: @log)
           types = scope.assignment_value_nodes(name, node.location.start_offset).filter_map do |value|
-            type = infer(value, ctx, budget, scope, depth + 1)
+            type = infer(value, ctx, budget, scope, depth + 1, bindings)
             type if usable?(type)
           end
           types.empty? ? Types::UNKNOWN : Types.union(types)
@@ -206,33 +237,34 @@ module RubyLsp
           substitute_self(param.types, self_type(ctx))
         end
 
-        # FR-M2-07: block parameters take their types from the called method's `@yieldparam` tags.
+        # FR-M2-07: block parameters take their types from the called method's `@yieldparam` tags. FR-M3-02 adds
+        # RBS block signatures, class type variable substitution and tuple destructuring (`Hash[K, V]#each`).
         def block_parameter_type(name, ctx, budget, scope, depth)
           call_node = ctx.call_node
           return Types::UNKNOWN unless call_node.is_a?(Prism::CallNode)
 
           scope ||= ScopeIndex.new(ctx, log: @log)
           parameters = scope.block_parameters
-          index = parameters.index { |param_name, _kind| param_name == name.to_s }
-          return Types::UNKNOWN unless index
+          return Types::UNKNOWN if parameters.empty?
 
           receiver_type = call_node.receiver ? infer(call_node.receiver, ctx, budget, scope, depth + 1) : self_type(ctx)
           resolution = resolution_from(receiver_type, ctx)
           return Types::UNKNOWN unless resolution
 
-          yields = resolution.members.flat_map do |member|
+          names = parameters.map(&:first)
+          resolution.members.each do |member|
             signature = @store.lookup(member.owner, call_node.message.to_s, singleton: member.singleton)
-            signature ? signature.yield_params : []
-          end
-          return Types::UNKNOWN if yields.empty?
+            next unless signature
 
-          match = yields.find { |param| normalize(param.name) == normalize(name) }
-          match ||= yields[index] if yields.size == parameters.size
-          match&.types || Types::UNKNOWN
+            types = yield_param_types(names, signature, member)
+            return types[name.to_s] if types.key?(name.to_s)
+          end
+
+          Types::UNKNOWN
         end
 
         # FR-M2-08: instance variables come from attribute docs or from typed assignments anywhere in the class.
-        def ivar_type(name, ctx, budget, scope, depth)
+        def ivar_type(name, ctx, budget, scope, depth, bindings)
           types = []
           owner = enclosing_class_owner(ctx)
 
@@ -248,19 +280,174 @@ module RubyLsp
 
           scope ||= ScopeIndex.new(ctx, log: @log)
           scope.ivar_value_nodes(name).each do |value|
-            type = infer(value, ctx, budget, scope, depth + 1)
+            type = infer(value, ctx, budget, scope, depth + 1, bindings)
             types << type if usable?(type)
           end
 
           types.empty? ? Types::UNKNOWN : Types.union(types)
         end
 
-        def array_type_args(node, ctx, budget, scope, depth)
+        def array_type_args(node, ctx, budget, scope, depth, bindings)
           types = node.elements.filter_map do |element|
-            type = infer(element, ctx, budget, scope, depth + 1)
+            type = infer(element, ctx, budget, scope, depth + 1, bindings)
             type if usable?(type)
           end
           types.empty? ? [] : [Types.union(types)]
+        end
+
+        # FR-M3-02: hash literals carry their key and value unions so RBS generics can bind, e.g. `{a: 1}` is
+        # `Hash[Symbol, Integer]` and `hash.each { |k, v| }` types both parameters.
+        def hash_type(node, ctx, budget, scope, depth, bindings)
+          keys = []
+          values = []
+          node.elements.each do |element|
+            next unless element.is_a?(Prism::AssocNode)
+
+            keys << element.key
+            values << element.value
+          end
+          return instance("Hash") if keys.empty?
+
+          key_types = keys.filter_map do |key|
+            type = infer(key, ctx, budget, scope, depth + 1, bindings)
+            type if usable?(type)
+          end
+          value_types = values.filter_map do |value|
+            type = infer(value, ctx, budget, scope, depth + 1, bindings)
+            type if usable?(type)
+          end
+          return instance("Hash") if key_types.empty? && value_types.empty?
+
+          key_type = key_types.empty? ? Types::UNKNOWN : Types.union(key_types)
+          value_type = value_types.empty? ? Types::UNKNOWN : Types.union(value_types)
+          instance("Hash", [key_type, value_type])
+        end
+
+        # --- Generics and block returns (FR-M3-02, FR-M3-03) --------------------------------------------------------
+
+        def substitute_type_vars(type, mapping)
+          Types.substitute_type_vars(type, mapping)
+        end
+
+        # Class-level RBS type variables bind to the receiver's generic arguments (FR-M3-02).
+        def type_bindings(signature, member)
+          params = Array(signature.type_params)
+          args = Array(member.type_args)
+          return {} if params.empty? || args.empty?
+
+          params.zip(args).to_h
+        end
+
+        def contains_type_var?(type, names)
+          case type
+          when Types::TypeVar
+            names.include?(type.name)
+          when Types::Union, Types::Tuple
+            type.types.any? { |member| contains_type_var?(member, names) }
+          when Types::Instance, Types::Singleton
+            type.type_args.any? { |argument| contains_type_var?(argument, names) }
+          when Types::HashOf
+            contains_type_var?(type.key, names) || contains_type_var?(type.value, names)
+          else
+            false
+          end
+        end
+
+        # FR-M3-03: binds method-level type variables, e.g. `Array#map`'s `T`, to the block's return type.
+        def bind_block_return(node, ctx, budget, scope, depth, member, signature, type)
+          type_params = Array(signature.method_type_params)
+          return type if type_params.empty? || node.block.nil?
+          return type unless contains_type_var?(type, type_params)
+
+          block_return =
+            case node.block
+            when Prism::BlockArgumentNode
+              block_argument_return(node.block, ctx, member)
+            when Prism::BlockNode
+              block_body_return(node.block, ctx, budget, scope, depth, member, signature)
+            else
+              Types::UNKNOWN
+            end
+          return type unless usable?(block_return)
+
+          substitute_type_vars(type, type_params.zip([block_return]).to_h)
+        rescue Budget::Exceeded
+          type
+        rescue => e
+          log_failure("bind_block_return", e)
+          type
+        end
+
+        def block_body_return(block, ctx, budget, scope, depth, member, signature)
+          body = block.body
+          return Types::UNKNOWN unless body.is_a?(Prism::StatementsNode)
+
+          last = body.body.last
+          return Types::UNKNOWN unless last
+
+          names = ScopeIndex.block_parameters_for(block).map(&:first)
+          infer(last, ctx, budget, scope, depth + 1, yield_param_types(names, signature, member))
+        end
+
+        # `map(&:strip)`: the symbol-to-proc form calls the method on each element type.
+        def block_argument_return(block, ctx, member)
+          symbol = block.expression
+          return Types::UNKNOWN unless symbol.is_a?(Prism::SymbolNode)
+
+          element_type = Array(member.type_args).first
+          return Types::UNKNOWN unless element_type
+
+          method_return(element_type, symbol.unescaped, ctx)
+        end
+
+        def method_return(receiver_type, message, ctx)
+          resolution = resolution_from(receiver_type, ctx)
+          return Types::UNKNOWN unless resolution
+
+          returns = resolution.members.filter_map do |member|
+            signature = @store.lookup(member.owner, message, singleton: member.singleton)
+            next unless signature && usable?(signature.return_types)
+
+            type = substitute_self(signature.return_types, receiver_type)
+            substitute_type_vars(type, type_bindings(signature, member))
+          end
+          returns.empty? ? Types::UNKNOWN : Types.union(returns)
+        rescue => e
+          log_failure("method_return", e)
+          Types::UNKNOWN
+        end
+
+        # Maps block parameter names to yield types, substituting class type variables and destructuring a single
+        # tuple yield into multiple block parameters (`Hash[K, V]#each`).
+        def yield_param_types(names, signature, member)
+          params = signature.yield_params
+          return {} if params.empty? || names.empty?
+
+          substituted = params.map { |param| substitute_type_vars(param.types, type_bindings(signature, member)) }
+          types = {}
+          matched = {}
+
+          names.each do |name|
+            index = params.index { |param| normalize(param.name) == normalize(name) }
+            next unless index
+
+            types[name] = substituted[index]
+            matched[index] = true
+          end
+
+          unmatched_names = names.reject { |name| types.key?(name) }
+          unmatched_params = (0...params.size).reject { |index| matched[index] }
+
+          if unmatched_names.any? && unmatched_names.size == unmatched_params.size
+            unmatched_names.each_with_index { |name, i| types[name] = substituted[unmatched_params[i]] }
+          elsif params.size == 1 && unmatched_names.size > 1
+            tuple = substituted.first
+            if tuple.is_a?(Types::Tuple) && tuple.types.size == names.size
+              names.each_with_index { |name, i| types[name] ||= tuple.types[i] }
+            end
+          end
+
+          types
         end
 
         # --- Type resolution into owners ---------------------------------------------------------------------------
@@ -270,9 +457,9 @@ module RubyLsp
           when Types::Unknown
             nil
           when Types::Instance
-            member_resolution(type.name, false)
+            member_resolution(type.name, false, type_args: type.type_args)
           when Types::Singleton
-            member_resolution(type.name, true)
+            member_resolution(type.name, true, type_args: type.type_args)
           when Types::Ref
             resolved = @adapter.resolve_constant(type.name, ctx.nesting)
             resolved ? member_resolution(resolved, false, label: type.name) : nil
@@ -291,8 +478,10 @@ module RubyLsp
           end
         end
 
-        def member_resolution(owner, singleton, label: nil)
-          Resolution.new(members: [Resolution::Member.new(owner, singleton, label || member_label(owner, singleton))])
+        def member_resolution(owner, singleton, label: nil, type_args: [])
+          Resolution.new(members: [
+            Resolution::Member.new(owner, singleton, label || member_label(owner, singleton), type_args)
+          ])
         end
 
         def union_resolution(type, ctx)

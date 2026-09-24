@@ -12,7 +12,8 @@ module RubyLsp
         definition: "enableDefinition",
         inlay_hints: "enableInlayHints",
         diagnostics: "enableDiagnostics",
-        authoring: "enableAuthoring"
+        authoring: "enableAuthoring",
+        core_types: "enableCoreTypes"
       }.freeze
 
       BOOLEAN_DEFAULTS = {
@@ -23,6 +24,7 @@ module RubyLsp
         "enableInlayHints" => false,
         "enableDiagnostics" => true,
         "enableAuthoring" => true,
+        "enableCoreTypes" => true,
         "debugInference" => false
       }.freeze
 

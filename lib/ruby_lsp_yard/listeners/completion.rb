@@ -110,8 +110,20 @@ module RubyLsp
           entries
         end
 
+        # FR-M3-02: the receiver's generic arguments bind RBS type variables in the label details.
         def signature_for(entry)
-          @store.lookup(entry[:member].owner, entry[:definition].name, singleton: entry[:member].singleton)
+          signature = @store.lookup(entry[:member].owner, entry[:definition].name, singleton: entry[:member].singleton)
+          return nil unless signature
+
+          signature.with_type_bindings(type_bindings(entry[:member], signature))
+        end
+
+        def type_bindings(member, signature)
+          params = Array(signature.type_params)
+          args = Array(member.type_args)
+          return {} if params.empty? || args.empty?
+
+          params.zip(args).to_h
         end
 
         # FR-M2-14: label details carry the typed parameter list and the return type, with the eager summary as

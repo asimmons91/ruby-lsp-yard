@@ -8,6 +8,17 @@ require "ruby_indexer/ruby_indexer"
 module IndexHelpers
   FIXTURES_PATH = File.expand_path("../fixtures", __dir__)
 
+  # A synchronously loaded RBS source shared by every test that needs core/stdlib signatures (M3). The environment
+  # is loaded once per process.
+  def self.rbs_source
+    @rbs_source ||= begin
+      require "ruby_lsp_yard/rbs"
+      loader = RubyLsp::Yard::Rbs::Loader.new(background: false)
+      loader.start
+      RubyLsp::Yard::Rbs::Source.new(loader)
+    end
+  end
+
   FIXTURE_FILES = %w[
     project/lib/animals.rb
     project/lib/nested.rb

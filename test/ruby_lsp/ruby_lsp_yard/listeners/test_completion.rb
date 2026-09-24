@@ -203,6 +203,40 @@ module RubyLsp
           refute_includes items.map(&:label), "fetch"
         end
 
+        def test_completes_core_methods_with_substituted_generics
+          items = nil
+          source = "[1, 2].\n"
+
+          with_server(source) do |server, uri|
+            index_fixtures(server)
+            index_core(server)
+            wait_for_rbs(server)
+            items = completion_items(server, uri, source, line_token: "[1, 2].")
+          end
+
+          first = find_item(items, "first")
+
+          refute_nil first
+          assert_equal "Integer", label_details(first)[:description]
+        end
+
+        def test_completes_core_methods_for_string_receivers
+          items = nil
+          source = '"text".\n'
+
+          with_server(source) do |server, uri|
+            index_fixtures(server)
+            index_core(server)
+            wait_for_rbs(server)
+            items = completion_items(server, uri, source, line_token: '"text".')
+          end
+
+          length = find_item(items, "length")
+
+          refute_nil length
+          assert_equal "Integer", label_details(length)[:description]
+        end
+
         def test_completion_returns_nothing_for_unknown_receivers
           source = <<~RUBY
             module FixtureProject
