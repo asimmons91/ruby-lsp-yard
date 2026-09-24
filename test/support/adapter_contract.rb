@@ -180,6 +180,29 @@ module AdapterContract
     assert_empty adapter.completion_candidates(DOG, prefix: "spec")
   end
 
+  def test_constant_candidates_filter_by_prefix_and_nesting
+    candidates = adapter.constant_candidates("Doc", ["FixtureProject"])
+
+    document = candidates.find { |definition| definition.name == "FixtureProject::Documented" }
+    refute_nil document
+    assert_nil document.comments
+  end
+
+  def test_constant_candidates_include_partial_paths_and_enclosing_scopes
+    assert_includes(
+      adapter.constant_candidates("Nested::Thi", ["FixtureProject"]).map(&:name),
+      "FixtureProject::Nested::Thing"
+    )
+    assert_includes(
+      adapter.constant_candidates("DEFAULT", ["FixtureProject", "Documented"]).map(&:name),
+      "FixtureProject::DEFAULT_NAME"
+    )
+  end
+
+  def test_constant_candidates_never_raise_for_unknown_names
+    assert_empty adapter.constant_candidates("Zzz", ["No::Such"])
+  end
+
   def test_on_change_notifies_subscribers
     received = []
     adapter.subscribe { |uris| received.concat(uris) }

@@ -68,6 +68,13 @@ module RubyLsp
         def completion_candidates(owner, prefix: nil, singleton: false)
           raise NotImplementedError
         end
+
+        # Returns the constants, classes and modules whose name starts with `prefix`, resolved relative to `nesting`,
+        # as `Definition` structs. Used by type completion inside YARD comments (FR-M4-05). Implementations must not
+        # read comments: the candidate set can be large.
+        def constant_candidates(prefix, nesting)
+          raise NotImplementedError
+        end
       end
     end
   end

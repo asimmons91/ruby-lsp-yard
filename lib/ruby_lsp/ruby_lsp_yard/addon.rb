@@ -4,6 +4,7 @@ require "ruby-lsp"
 require "ruby_lsp/addon"
 require "uri"
 
+require_relative "../../ruby_lsp_yard/authoring"
 require_relative "../../ruby_lsp_yard/gems"
 require_relative "../../ruby_lsp_yard/indexer"
 require_relative "../../ruby_lsp_yard/inference"
@@ -38,6 +39,8 @@ module RubyLsp
           log: log,
           debug: settings.debug_inference?
         )
+        @client_capabilities = global_state.client_capabilities
+        install_authoring
         @log.debug("Activated with Ruby LSP #{RubyLsp::VERSION}")
       rescue => e
         add_error(e)
@@ -45,6 +48,8 @@ module RubyLsp
       end
 
       def deactivate
+        Authoring::Registry.current = nil if Authoring::Registry.current.equal?(self)
+        @client_capabilities = nil
         @gem_cache&.flush
         @rbs_loader&.cancel
         @rbs_loader = nil
@@ -112,6 +117,15 @@ module RubyLsp
         )
       end
 
+      # NFR-C3: whether the client accepts snippet placeholders in completion. Ruby LSP 0.26 applies client
+      # capabilities before add-ons load, so the capability is usually unknown here; when it is unknown, assume
+      # support (every editor Ruby LSP targets supports snippets) and let the `enableSnippets` setting opt out.
+      def snippets?
+        capabilities = @client_capabilities
+        observed = capabilities.respond_to?(:supports_snippets) ? capabilities.supports_snippets : nil
+        observed.nil? || observed
+      end
+
       # NFR-P1: core/stdlib signatures load in the background; features that need them degrade to YARD until ready.
       def build_rbs_loader
         return nil unless settings.enabled?(:core_types)
@@ -119,6 +133,23 @@ module RubyLsp
         loader = Rbs::Loader.new(log: @log)
         loader.start
         loader
+      end
+
+      # FR-M4-P2: the comment patch only runs on explicitly tested Ruby LSP versions. Every other version disables
+      # authoring with one warning while the rest of the add-on keeps working.
+      def install_authoring
+        unless Authoring::Patch.supported_version?
+          @log.warn(
+            "Comment authoring is disabled for Ruby LSP #{RubyLsp::VERSION}; the comment patch is only applied to " \
+              "#{Authoring::Patch::TESTED_VERSIONS.join(", ")}"
+          )
+          return
+        end
+
+        Authoring::Registry.current = self
+        Authoring::Patch.install!
+      rescue => e
+        @log.error("Failed to install the comment authoring patch: #{e.class}: #{e.message}")
       end
 
       def name

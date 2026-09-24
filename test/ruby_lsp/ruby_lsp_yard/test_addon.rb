@@ -46,6 +46,17 @@ module RubyLsp
         addon&.deactivate
       end
 
+      def test_activation_registers_the_authoring_patch
+        addon = activate_addon
+
+        assert_equal addon, Authoring::Registry.current
+        assert Authoring::Patch.installed?
+        assert addon.snippets?
+      ensure
+        addon&.deactivate
+        assert_nil Authoring::Registry.current
+      end
+
       def test_activation_reads_addon_settings
         addon = activate_addon(enableHover: false, logLevel: "debug")
 

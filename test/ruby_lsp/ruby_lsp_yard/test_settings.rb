@@ -14,6 +14,7 @@ module RubyLsp
         assert settings.enabled?(:definition)
         assert settings.enabled?(:diagnostics)
         assert settings.enabled?(:authoring)
+        assert settings.enabled?(:snippets)
         refute settings.enabled?(:inlay_hints)
         refute settings.debug_inference?
         assert_equal :info, settings.log_level
