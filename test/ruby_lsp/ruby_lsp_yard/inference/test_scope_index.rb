@@ -110,6 +110,45 @@ module RubyLsp
           )
         end
 
+        def test_collects_multi_assignments_pairwise
+          source = <<~RUBY
+            module FixtureProject
+              class Thing
+                def work
+                  a, b = 1, "two"
+                  @left, @right = 1, 2
+                  first, *middle, last = 1, 2, 3
+                  a.to_s
+                end
+              end
+            end
+          RUBY
+          context = context_for(source, "a.to_s", node_types: [Prism::CallNode])
+          index = ScopeIndex.new(context)
+
+          assert_equal ["1"], index.assignment_value_nodes("a", source.length).map(&:slice)
+          assert_equal ['"two"'], index.assignment_value_nodes("b", source.length).map(&:slice)
+          assert_equal ["1"], index.ivar_value_nodes("@left").map(&:slice)
+          assert_equal ["2"], index.ivar_value_nodes("@right").map(&:slice)
+          assert_equal ["1"], index.assignment_value_nodes("first", source.length).map(&:slice)
+          assert_equal ["3"], index.assignment_value_nodes("last", source.length).map(&:slice)
+          assert_empty index.assignment_value_nodes("middle", source.length)
+        end
+
+        def test_skips_multi_assignments_without_a_value_split
+          source = <<~RUBY
+            def work
+              a, b = fetch_values
+              a.to_s
+            end
+          RUBY
+          context = context_for(source, "a.to_s", node_types: [Prism::CallNode])
+          index = ScopeIndex.new(context)
+
+          assert_empty index.assignment_value_nodes("a", source.length)
+          assert_empty index.assignment_value_nodes("b", source.length)
+        end
+
         private
 
         def scope_index

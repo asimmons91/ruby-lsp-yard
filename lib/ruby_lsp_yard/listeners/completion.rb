@@ -111,7 +111,7 @@ module RubyLsp
         end
 
         def signature_for(entry)
-          @store.lookup(entry[:definition].owner, entry[:definition].name, singleton: entry[:member].singleton)
+          @store.lookup(entry[:member].owner, entry[:definition].name, singleton: entry[:member].singleton)
         end
 
         # FR-M2-14: label details carry the typed parameter list and the return type, with the eager summary as

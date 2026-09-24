@@ -5,7 +5,8 @@ require "test_helper"
 module RubyLsp
   module Yard
     # The M2 acceptance corpus (requirements §7): completion after `.` on receivers whose types come from YARD tags.
-    # Accuracy must be at least 90%; labels listed under `forbidden` must never be offered.
+    # Accuracy must be at least 90%; labels listed under `forbidden` must never be offered. `typed` entries assert
+    # the add-on's typed label details, so the host's untyped fallback items cannot satisfy them.
     class TestCompletionCorpus < Minitest::Test
       include RubyLsp::TestHelper
       include IndexHelpers
@@ -26,7 +27,8 @@ module RubyLsp
           RUBY
           line_token: "doc.",
           expected: %w[fetch find chain each_value required_keyword label splats],
-          forbidden: %w[secret]
+          forbidden: %w[secret],
+          typed: {"fetch" => "Array<String>?"}
         },
         {
           name: "constant instance",
@@ -47,7 +49,16 @@ module RubyLsp
           source: "FixtureProject::Inferable.\n",
           line_token: "FixtureProject::Inferable.",
           expected: %w[greet],
-          forbidden: []
+          forbidden: [],
+          typed: {"greet" => "String"}
+        },
+        {
+          name: "singleton with its own class method",
+          source: "FixtureProject::Dog.\n",
+          line_token: "FixtureProject::Dog.",
+          expected: %w[species],
+          forbidden: [],
+          typed: {"species" => "String"}
         },
         {
           name: "chain returning self",
@@ -75,6 +86,8 @@ module RubyLsp
           source: <<~RUBY,
             module FixtureProject
               class Inferable
+                @related = FixtureProject::Documented.new
+
                 def use
                   @related.
                 end
@@ -83,7 +96,8 @@ module RubyLsp
           RUBY
           line_token: "@related.",
           expected: %w[fetch label find],
-          forbidden: %w[secret]
+          forbidden: %w[secret],
+          typed: {"fetch" => "Array<String>?"}
         }
       ].freeze
 
@@ -92,7 +106,8 @@ module RubyLsp
         total = 0
 
         CASES.each do |test_case|
-          labels = complete(test_case[:source], test_case[:line_token]).map(&:label)
+          items = complete(test_case[:source], test_case[:line_token])
+          labels = items.map(&:label)
 
           test_case[:expected].each do |label|
             total += 1
@@ -101,6 +116,13 @@ module RubyLsp
 
           test_case[:forbidden].each do |label|
             refute_includes labels, label, "#{test_case[:name]} offered #{label}"
+          end
+
+          (test_case[:typed] || {}).each do |label, description|
+            item = items.find { |candidate| candidate.label == label }
+
+            refute_nil item, "#{test_case[:name]} is missing #{label}"
+            assert_equal description, label_details(item)[:description], "#{test_case[:name]}: #{label}"
           end
         end
 
