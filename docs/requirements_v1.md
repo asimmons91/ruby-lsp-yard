@@ -294,6 +294,32 @@ registration. Every gap above has a disposition; upstream rows become issues aga
 - All performance budgets in §4.1 are met on the benchmark project.
 - No duplicate completion items when used with plain Ruby LSP and with ruby-lsp-rails.
 
+### 7.5 M2 implementation notes (2026-09-24)
+- **FR-M2-20 (inlay hints)** is descoped in 0.26 for the same reason as FR-M1-13: `Requests::InlayHints` ignores
+  add-ons (§5.1). `enableInlayHints` stays reserved.
+- **Completion resolve** has no add-on hook, so completion documentation (the docstring summary) is emitted
+  eagerly. Methods without YARD types are left to Ruby LSP's own listener so no item is duplicated (FR-M2-17).
+- **Enriched items replace host items.** Ruby LSP passes one `CollectionResponseBuilder` to its own completion
+  and definition listeners and to the add-on's, whose `#response` exposes the mutable item array. The add-on
+  prunes host items for labels it can enrich and, for definition, replaces the fallback list when it resolved the
+  receiver itself (FR-M2-19). The capability is probed per request; if the array is unavailable the add-on falls
+  back to emitting only labels the host did not add. M6 must re-check this probe.
+- **Scope access.** `NodeContext` exposes only the target node and `dispatch_once` visits nothing else, so
+  local/ivar/block inference reads the document AST through the private `@nesting_nodes` array (FR-M2-05/07/08).
+  The accessor is version-guarded and degrades to `Unknown` when the shape changes; only the enclosing scope
+  subtree is walked, once per request and memoized. Nothing is re-parsed.
+- **Inline `@type` (FR-M2-13, D6)** is deferred to M7: comments are not part of the AST, and reading them from
+  disk would be stale for unsaved buffers.
+- **Sorbet policy (D5).** The completion and definition hooks do not receive the file's `SorbetLevel`, so the
+  per-file "turn off in Sorbet-typed files" rule cannot be applied in M2. Features defer wherever Ruby LSP itself
+  defers.
+- **Inference details.** `@return [self]` is substituted with the receiver's type; `Foo.new` uses a documented
+  `self.new` return type unless it comes from `Class`/`Object`; the budget is 20 ms/8 chained calls plus a visited
+  set of `(method, receiver type)`; `nil` is dropped from unions and `Object` is unknown (D7).
+- **Corpus and budgets.** `test/corpus/test_completion_corpus.rb` enforces the ≥ 90% acceptance criterion and
+  forbids known-wrong labels. `rake benchmark` measures warm-cache inference and completion enrichment against
+  the §4.1 budgets; the CI regression gate (NFR-T4) is deferred.
+
 ---
 
 ## 8. Milestone M3 — Core/stdlib types, generics & gem caching
@@ -419,7 +445,7 @@ registration. Every gap above has a disposition; upstream rows become issues aga
 | **D3** ✅ | How to get completion inside comments (M4) | **Decided:** Monkeypatch only, with a version check (FR-M4-P1 to P6) | No upstream proposal planned |
 | **D4** | Target audience | Plain Ruby only · Rails-aware (coexist with ruby-lsp-rails, understand ActiveRecord DSL docs) | Plain Ruby first, Rails tested for compatibility |
 | **D5** ✅ | Coexisting with Sorbet and RBS | **Decided:** Turn off in Sorbet-typed files; where RBS and YARD both describe a method, RBS wins | *Still open:* rbs-inline support (proposed: M7) and `rbs collection` gem signatures (FR-M3-07) |
-| **D6** | How closely to match Solargraph | None · `@type` inline only · `@type` + `.solargraph.yml` domains | `@type` inline in M2, `.solargraph.yml` in M7 |
+| **D6** | How closely to match Solargraph | None · `@type` inline only · `@type` + `.solargraph.yml` domains | *Still open:* `@type` inline deferred from M2 to M7 (§7.5), `.solargraph.yml` in M7 |
 | **D7** | Completion when the receiver type is unknown; handling `nil` and `Object` | Show nothing · Leave it to Ruby LSP's default behavior · Guess from method names | Leave it to Ruby LSP; leave `nil` out of unions; treat `Object` as unknown |
 | **D8** | How much inference follows control flow | Assignments only (union) · Narrowing on `nil` checks, `is_a?` and `case`/`when` | Union in M2; narrowing as a later M3 stretch goal |
 | **D9** | Which gems to read and where to cache | All bundled gems · An allowlist · None · Cache in `.ruby-lsp/` vs `~/.cache` | All gems except those excluded in Ruby LSP's indexing config; cache in `~/.cache/<name>` shared across projects |

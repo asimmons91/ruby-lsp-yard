@@ -153,6 +153,33 @@ module AdapterContract
     assert_empty adapter.methods_of(DOG, prefix: "spec")
   end
 
+  def test_definitions_expose_full_location_and_file_name
+    definition = adapter.method_definitions(ANIMAL, "speak").first
+
+    refute_nil definition
+    refute_nil definition.full_location
+    assert_equal "animals.rb", definition.file_name
+    assert_operator definition.full_location.end_line, :>=, definition.location.start_line
+  end
+
+  def test_completion_candidates_omit_comments_and_expose_display_data
+    candidate = adapter.completion_candidates(DOG, prefix: "bar").find { |definition| definition.name == "bark" }
+
+    refute_nil candidate
+    assert_nil candidate.comments
+    assert_equal DOG, candidate.owner
+    assert_equal :public, candidate.visibility
+    assert_equal "animals.rb", candidate.file_name
+    refute_nil candidate.full_location
+  end
+
+  def test_completion_candidates_find_singleton_methods
+    candidates = adapter.completion_candidates(DOG, prefix: "spec", singleton: true)
+
+    assert_includes candidates.map(&:name), "species"
+    assert_empty adapter.completion_candidates(DOG, prefix: "spec")
+  end
+
   def test_on_change_notifies_subscribers
     received = []
     adapter.subscribe { |uris| received.concat(uris) }

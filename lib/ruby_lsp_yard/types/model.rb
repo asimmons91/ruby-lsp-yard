@@ -80,6 +80,31 @@ module RubyLsp
           end
         end
 
+        # Replaces `self` with `replacement` recursively, e.g. an `@return [self]` result resolved against the
+        # receiver's inferred type (FR-M2-06).
+        def substitute_self(type, replacement)
+          case type
+          when Special
+            (type == SELF) ? replacement : type
+          when Union
+            union(type.types.map { |member| substitute_self(member, replacement) })
+          when Instance
+            return type if type.type_args.empty?
+
+            Instance.new(type.name, type.type_args.map { |argument| substitute_self(argument, replacement) })
+          when Singleton
+            return type if type.type_args.empty?
+
+            Singleton.new(type.name, type.type_args.map { |argument| substitute_self(argument, replacement) })
+          when Tuple
+            Tuple.new(type.types.map { |member| substitute_self(member, replacement) })
+          when HashOf
+            HashOf.new(substitute_self(type.key, replacement), substitute_self(type.value, replacement))
+          else
+            type
+          end
+        end
+
         # The type of the literal's class, for the stretch completion goal (requirements §3.1).
         def literal_class(type)
           return UNKNOWN unless type.is_a?(Literal)

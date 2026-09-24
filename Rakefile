@@ -41,4 +41,10 @@ task :corpus do
   abort "corpus: failure rate above #{max_failure_rate}" if result.failure_rate > max_failure_rate
 end
 
+desc "Run the inference and completion latency benchmarks (NFR-T4)"
+task :benchmark do
+  ruby "benchmark/inference.rb"
+  ruby "benchmark/completion.rb"
+end
+
 task default: %i[test standard]

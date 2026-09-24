@@ -6,11 +6,11 @@ module RubyLsp
       # Adds a typed YARD signature to hover responses (FR-M1-12). Ruby LSP dispatches only the hovered node
       # (`dispatch_once`), so only the call node needs handling. Never raises out of the request (NFR-R2).
       class Hover
-        def initialize(response_builder, node_context, dispatcher, store:, inferrer:, log: nil)
+        def initialize(response_builder, node_context, dispatcher, store:, engine:, log: nil)
           @response_builder = response_builder
           @node_context = node_context
           @store = store
-          @inferrer = inferrer
+          @engine = engine
           @log = log
 
           dispatcher.register(self, :on_call_node_enter)
@@ -20,7 +20,7 @@ module RubyLsp
           message = node.message
           return unless message
 
-          owner, singleton = @inferrer.owner_for(@node_context)
+          owner, singleton = @engine.owner_for(@node_context)
           return unless owner
 
           signature = @store.lookup(owner, message, singleton: singleton)

@@ -28,7 +28,7 @@ module RubyLsp
         refute addon.error?
         assert_instance_of Indexer::RubyIndexerAdapter, addon.indexer
         assert_instance_of SignatureStore, addon.signature_store
-        assert_instance_of Inference::ReceiverInferrer, addon.receiver_inferrer
+        assert_instance_of Inference::Engine, addon.inference
         refute_nil addon.log
       end
 
@@ -46,7 +46,7 @@ module RubyLsp
 
         assert_nil addon.indexer
         assert_nil addon.signature_store
-        assert_nil addon.receiver_inferrer
+        assert_nil addon.inference
         assert_nil addon.settings
         assert_nil addon.log
       end

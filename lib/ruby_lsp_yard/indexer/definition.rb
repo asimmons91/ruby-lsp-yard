@@ -12,7 +12,8 @@ module RubyLsp
       Parameter = Struct.new(:name, :kind)
 
       # Backend-neutral view of a method, attribute, class, module or constant definition returned by the Indexer
-      # Adapter. Host indexer entry objects must never leak past the adapter.
+      # Adapter. Host indexer entry objects must never leak past the adapter. `location` is the name's location and
+      # `full_location` the whole definition (for go to definition's target range).
       Definition = Struct.new(
         :name,
         :owner,
@@ -20,6 +21,8 @@ module RubyLsp
         :visibility,
         :uri,
         :location,
+        :full_location,
+        :file_name,
         :comments,
         :parameters
       )

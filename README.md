@@ -6,18 +6,23 @@ carry thorough YARD documentation.
 
 ## Status
 
-**M0 (foundation) and M1 (YARD parsing, signature store, hover) are complete.** The add-on reads YARD `@param`
-and `@return` tags through the `yard` gem's docstring parser and shows a typed signature on hover for receivers
-Ruby LSP can already resolve: `self`, constants and `Foo.new`. Completion, inference, signature help and the
-remaining features land in M2–M7; see [`docs/requirements_v1.md`](docs/requirements_v1.md) for the full plan.
+**M0 (foundation), M1 (YARD parsing, signature store, hover) and M2 (inference, completion, definition) are
+complete.** The add-on reads YARD `@param` and `@return` tags through the `yard` gem's docstring parser and infers
+receiver types from literals, constants, `self`, method parameters, local and instance variable assignments,
+`Foo.new`, call chains, unions, duck types and blocks. Signature help and the remaining features land in M3–M7;
+see [`docs/requirements_v1.md`](docs/requirements_v1.md) for the full plan.
 
-Known gaps in M1:
+Known gaps:
 
 - Signature help has no add-on hook in Ruby LSP 0.26 (`Requests::SignatureHelp` ignores add-ons), so the
   `enableSignatureHelp` setting is reserved until an upstream hook exists or a later milestone patches it.
+- Inlay hints have no add-on hook either (`Requests::InlayHints` ignores add-ons), so `enableInlayHints` is
+  reserved and FR-M2-20 is descoped until a hook appears.
 - Hover on a type name inside a YARD comment needs the comment-reaching patch from M4 and is not available yet.
 - Ruby LSP only target-hovers `CallNode` and the other node types in `Listeners::Hover::ALLOWED_TARGETS`, which
   excludes `def` nodes, so definitions are not enriched.
+- Solargraph-style inline `# @type [Foo]` annotations are deferred to M7 (D6), and the per-file Sorbet policy in
+  D5 cannot be applied because the completion and definition hooks do not receive the file's Sorbet level.
 
 ## Requirements
 
@@ -57,18 +62,18 @@ Settings live under `rubyLsp.addonSettings`, keyed by the add-on name. For VS Co
 
 | Setting | Default | Gates |
 |---|---|---|
-| `enableCompletion` | `true` | Type-aware method completion (M2) |
-| `enableHover` | `true` | Documented types in hover (M1) |
+| `enableCompletion` | `true` | Type-aware method completion |
+| `enableHover` | `true` | Documented types in hover |
 | `enableSignatureHelp` | `true` | Reserved: no add-on hook in Ruby LSP 0.26 (see Status) |
-| `enableDefinition` | `true` | Go to definition from YARD types (M2) |
-| `enableInlayHints` | `false` | Inferred type hints (M2, if the add-on API allows) |
+| `enableDefinition` | `true` | Go to definition from YARD types |
+| `enableInlayHints` | `false` | Reserved: no add-on hook in Ruby LSP 0.26 (see Status) |
 | `enableDiagnostics` | `true` | YARD diagnostics (M5) |
 | `enableAuthoring` | `true` | YARD comment completion and skeletons (M4) |
 | `logLevel` | `"info"` | One of `debug`, `info`, `warn`, `error` |
 | `debugInference` | `false` | Logs how inference reached each result |
 
-Feature toggles are already read during activation; the behavior they gate arrives in later milestones. Invalid
-values fall back to the defaults, and no configuration is required at all.
+Feature toggles are read during activation; invalid values fall back to the defaults, and no configuration is
+required at all.
 
 ## Hover
 
@@ -86,6 +91,32 @@ is left to Ruby LSP itself so the two responses do not duplicate each other.
 Methods whose docs only exist behind a `@!method`, `@!attribute` or `@!parse` directive are resolved too, as
 are docstrings inherited through `include`, `extend` and superclasses and YARD `(see Foo#bar)` references.
 
+## Inference
+
+Receiver types come from YARD tags and code (requirements FR-M2-01..13): literals, constants, `self` (including
+`class << self`), `@param` tags, local variable assignments before the cursor, instance variables typed by
+attribute docs or class assignments, `Foo.new` (respecting a documented `self.new`), call chains with
+`@return [self]`, `@yieldparam` for block parameters, unions and `#duck` types. Inference stops after a 20 ms
+budget or 8 chained calls and degrades to Ruby LSP's own behavior rather than guessing; `nil` is dropped from
+unions and `Object` is treated as unknown (D7).
+
+## Completion
+
+After `recv.`, completion offers the methods of the inferred type. Items carry the typed parameter list and
+return type in their label details, the docstring summary as documentation, and are ranked with the receiver's
+own class before its ancestors. Methods that exist on only part of a union are labeled with the member types that
+provide them, and duck types offer exactly the documented methods. Private and protected methods are offered only
+for internal receivers. Items that the add-on can enrich replace Ruby LSP's untyped items for the same method, so
+plain Ruby LSP and ruby-lsp-rails users see no duplicates. When the receiver type is unknown, the add-on emits
+nothing and Ruby LSP's own behavior applies.
+
+## Go to definition
+
+For `recv.m` whose receiver type is inferred from YARD — including parameters, locals, instance variables and
+chains — go to definition jumps to the definitions of `m` on the receiver's ancestors, including `extend`ed
+modules. When the add-on knows the receiver, its precise targets replace Ruby LSP's fallback of listing every
+method with that name; when it does not, the host response is left untouched.
+
 ## Development
 
 ```bash
@@ -93,6 +124,7 @@ bin/setup                                  # bundle install
 bundle exec rake                           # tests + standard (what CI runs)
 bundle exec rake test                      # tests only
 bundle exec rake corpus                    # parse the YARD comments of installed top gems (NFR-T3)
+bundle exec rake benchmark                 # inference and completion latency (NFR-P2/P3)
 BUNDLE_GEMFILE=gemfiles/ruby_lsp_0.26.gemfile bundle exec rake   # a specific ruby-lsp version
 ```
 
