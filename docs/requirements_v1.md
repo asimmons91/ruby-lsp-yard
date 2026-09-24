@@ -160,6 +160,31 @@ The model must be able to represent at least:
 - The adapter contract tests pass against `RubyIndexer`.
 - The API availability table is complete, and every gap has an owner.
 
+### 5.1 Add-on API availability (FR-M0-05 audit)
+
+Audited against `ruby-lsp` v0.26.0 and v0.26.11. The add-on hook set is identical across the whole 0.26 minor.
+Evidence is the method that invokes the hook in `lib/ruby_lsp/`, or the request that serves the feature without
+consulting add-ons.
+
+| Feature | 0.26.x | Mechanism / evidence | Disposition / owner |
+|---|---|---|---|
+| Completion | ✅ | `Addon#create_completion_listener`, invoked by `Requests::Completion` | M2 (FR-M2-14) |
+| Completion resolve | ❌ | No add-on hook; `completionItem/resolve` only runs `Requests::CompletionResolve` for Ruby LSP's own items | Descope: emit documentation eagerly in M2 (FR-M2-14). Upstream owner: ruby-lsp completion-resolve hook |
+| Hover | ✅ | `Addon#create_hover_listener`, invoked by `Requests::Hover` | M1 (FR-M1-12) |
+| Signature help | ❌ | No add-on hook; `Requests::SignatureHelp` ignores add-ons | Upstream owner: ruby-lsp signature-help hook; FR-M1-13 falls back to an upstream request if none is added |
+| Definition | ✅ | `Addon#create_definition_listener`, invoked by `Requests::Definition` | M2 (FR-M2-19) |
+| Inlay hints | ❌ | No add-on hook; `Requests::InlayHints` ignores add-ons | Descoped (D14 default); revisit if a hook appears |
+| Code actions | ❌ | No add-on hook; `Requests::CodeActions` ignores add-ons | Upstream owner: ruby-lsp code-action hook (FR-M4-06 skeleton, FR-M5-03 quick fixes) |
+| Code lens | ✅ | `Addon#create_code_lens_listener`, invoked by `Requests::CodeLens` | M4 fallback for comment skeleton generation (FR-M4-06) |
+| Diagnostics / linter registration | ⚠️ | `GlobalState#register_formatter(identifier, instance)` supports `run_diagnostic`, but the linter only activates when the user lists the identifier in `rubyLsp.linters`; add-on linters are not auto-detected | M5 (FR-M5-01) with a documented `rubyLsp.linters` requirement. Upstream owner for auto-detection |
+| On-type formatting | ❌ | No add-on hook | Descope: not needed by V1 |
+| Settings | ✅ | `GlobalState#settings_for_addon(name)` reads `addonSettings` keyed by the add-on's name | M0 (FR-M0-06) |
+| File watching | ✅ | `Addon#workspace_did_change_watched_files(changes)`; the server registers `**/*.rb` watchers for add-ons that respond to it | M0 (`Indexer::Adapter#on_change`) |
+
+Bonus hooks available in 0.26.x and unused by V1: document symbols, semantic highlighting, discover tests and formatter
+registration. Every gap above has a disposition; upstream rows become issues against
+[Shopify/ruby-lsp](https://github.com/Shopify/ruby-lsp) when the owning milestone starts.
+
 ---
 
 ## 6. Milestone M1 — YARD parsing, signature store, hover & signature help
