@@ -5,7 +5,7 @@
 | **Status** | Accepted |
 | **Last updated** | 2026-09-24 |
 | **Working name** | `ruby-lsp-yard` (see D12) |
-| **Target host** | Ruby LSP 0.26.x stable (`RubyIndexer`); Ruby LSP 0.27 (Rubydex) planned, see D1 |
+| **Target host** | Ruby LSP 0.26.x stable (`RubyIndexer`) and 0.27 (`Rubydex`, M6); 0.26 drop timing is D1 |
 
 Items marked **⚠ Open decision (Dn)** depend on a choice that has not been made yet. Section 13 lists all of them, each with a proposed default. Items marked **🔍 Verify** depend on a Ruby LSP API detail that must be confirmed against the source of the target version before implementation.
 
@@ -184,6 +184,9 @@ consulting add-ons.
 Bonus hooks available in 0.26.x and unused by V1: document symbols, semantic highlighting, discover tests and formatter
 registration. Every gap above has a disposition; upstream rows become issues against
 [Shopify/ruby-lsp](https://github.com/Shopify/ruby-lsp) when the owning milestone starts.
+
+Re-audited against `ruby-lsp` v0.27.0.beta5 in M6 (§11.1): the hook set is unchanged; only `NodeContext`'s
+surrounding-method shape and singleton nesting markers moved, and both are normalized by `HostContext`.
 
 ---
 
@@ -544,6 +547,48 @@ registration. Every gap above has a disposition; upstream rows become issues aga
 - **FR-M6-04:** Run the full test suite against both backends and get identical results. Document any intended differences.
 - **FR-M6-05:** Decide when to drop support for 0.26.x (D1).
 
+### 11.1 M6 implementation notes (2026-09-24)
+
+- **Backend selection (FR-M6-01/03).** `lib/ruby_lsp_yard/indexer.rb` requires exactly one backend based on
+  `RubyLsp::VERSION`: `RubyIndexerAdapter` below 0.27, `RubydexAdapter` at 0.27+ (0.27 removed `RubyIndexer` from
+  the load path). `Indexer.for(global_state)` reads `global_state.index` or `global_state.graph`;
+  `Indexer.wrap(backend)` and `Indexer.adapter_class` keep tests and benchmarks backend neutral. The supported
+  range is now `>= 0.26.0, < 0.28.0`, and `gemfiles/ruby_lsp_0.27.gemfile` pins `ruby-lsp 0.27.0.beta5` (with
+  Rubydex 0.4.1) as a second CI matrix leg.
+- **Rubydex mapping and normalization (FR-M6-01).** `RubydexAdapter` wraps `Rubydex::Graph`:
+  `graph[name]`/`find_member("name()")` for method, attribute and constant definitions;
+  `Namespace#ancestors` + `#members` for `methods_of`/`completion_candidates` (the walk includes private methods,
+  which the add-on filters itself, keeps the method when a member carries both a real method and an `attr_*`
+  definition, and synthesizes writers from `AttrWriterDefinition`/`AttrAccessorDefinition` because Rubydex names
+  attribute members after the reader); `complete_expression` and
+  `complete_namespace_access` for `constant_candidates`; and `resolve_constant` with `<...>` nesting sanitization
+  plus a top-level fallback (Rubydex does not fall back when a qualified name is unresolvable relative to the
+  nesting). Names leaving the adapter keep the RubyIndexer spelling: `Foo::<Foo>` becomes `Foo::<Class:Foo>`,
+  comments are joined into one `#`-stripped string, namespace definitions report a `nil` owner (as `RubyIndexer`
+  does, which directive discovery depends on), and ancestors backed only by `rubydex:built-in` definitions
+  (`Object`, `Kernel`, `BasicObject` when core was not indexed) are dropped.
+- **Host API deltas (FR-M6-02).** The add-on hook set (completion, hover, definition, code lens, formatter/linter
+  registration, file watching) and the patched request signatures (`Completion`, `Hover`, `Definition`,
+  `CodeActions#initialize(document, range, context)`, `ClientCapabilities#apply_client_capabilities`) are unchanged
+  in 0.27.0.beta5, so the M4 patch runs as-is and `Patch::TESTED_VERSIONS` gained `0.27.0.beta5`.
+  `NodeContext#surrounding_method` changed from a name String to a `MethodDef` (`name`/`receiver`) and singleton
+  nesting markers changed from `<Class:Foo>` to `<Foo>`; the new `HostContext` normalizes both shapes for the
+  inference engine and the completion listener and, on 0.26, recovers the method receiver from the innermost def
+  node so `def Foo.bar` is a singleton scope on both backends. The host `TypeInferrer` now returns singleton type
+  names as `Foo::<Foo>`; `Engine#host_resolution` accepts both marker spellings, and comment nodes are still
+  reachable through `@parse_result.comments`. Signature help and inlay hints still have no add-on hook in 0.27 (the
+  §5.1 audit is otherwise unchanged).
+- **Identical results and intended differences (FR-M6-04).** The full suite passes on both backends (413
+  runs/1267 assertions on 0.26.11, 416/1280 on 0.27.0.beta5); the backend-specific adapter tests are gated so each
+  gemfile exercises its own implementation against the same `test/support/adapter_contract.rb`. Deliberate
+  differences: Rubydex reports built-in ancestor placeholders and authoring/attribute details differently, all of
+  which the adapter normalizes away; `ENRICHMENT_LIMIT` was raised from 100 to 300 because Rubydex exposes the
+  whole ancestor chain for core classes (String has ~270 completion candidates, ~7 ms warm), so truncation had
+  become dependent on backend member ordering.
+- **FR-M6-05 (D1).** 0.26 stays supported. The drop decision remains two minor releases after 0.27.0 stable; with
+  the version-gated adapter and the separate gemfile, dropping it is a gemfile/workflow removal plus a
+  `TESTED_VERSIONS` edit.
+
 ---
 
 ## 12. Milestone M7 — Advanced directives & ecosystem compatibility
@@ -569,7 +614,7 @@ registration. Every gap above has a disposition; upstream rows become issues aga
 
 | ID | Decision | Options | Proposed default |
 |---|---|---|---|
-| **D1** ✅ | Which indexer to target first | **Decided:** 0.26/`RubyIndexer` first behind the adapter; Rubydex backend in M6 | *Still open:* when to drop 0.26 (proposed: two minor releases after 0.27 stable) |
+| **D1** ✅ | Which indexer to target first | **Decided:** 0.26/`RubyIndexer` first behind the adapter; Rubydex backend in M6 (done, §11.1) | *Still open:* when to drop 0.26 (proposed: two minor releases after 0.27 stable) |
 | **D2** ✅ | YARD parsing dependency | **Decided:** `yard` gem as a runtime dependency, using only its docstring parser (not the Registry or `yardoc`) | Type expressions still need our own parser (FR-M1-07), since YARD stores types as plain strings |
 | **D3** ✅ | How to get completion inside comments (M4) | **Decided:** Monkeypatch only, with a version check (FR-M4-P1 to P6) | No upstream proposal planned |
 | **D4** | Target audience | Plain Ruby only · Rails-aware (coexist with ruby-lsp-rails, understand ActiveRecord DSL docs) | Plain Ruby first, Rails tested for compatibility |

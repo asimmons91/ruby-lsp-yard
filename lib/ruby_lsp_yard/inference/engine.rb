@@ -2,6 +2,7 @@
 
 require "prism"
 
+require_relative "../host_context"
 require_relative "../types"
 require_relative "budget"
 require_relative "resolution"
@@ -516,7 +517,7 @@ module RubyLsp
           return nil unless type&.name
 
           name = type.name
-          marker = name.rindex("::<Class:")
+          marker = name.rindex("::<")
           if marker && name.end_with?(">")
             owner = name[0...marker]
             Resolution.new(members: [Resolution::Member.new(owner, true, owner)], source: :host)
@@ -530,14 +531,10 @@ module RubyLsp
         # --- Context helpers ---------------------------------------------------------------------------------------
 
         def self_type(ctx)
-          nesting = Array(ctx.nesting)
-          return Types::UNKNOWN if nesting.empty?
-
-          singleton = nesting.any? { |part| part.start_with?("<Class:") }
-          owner = nesting.reject { |part| part.start_with?("<Class:") }.join("::")
+          owner = HostContext.owner(ctx)
           return Types::UNKNOWN if owner.empty?
 
-          if singleton || ctx.surrounding_method.nil?
+          if HostContext.singleton?(ctx) || HostContext.surrounding_method_name(ctx).nil?
             Types::Singleton.new(owner)
           else
             Types::Instance.new(owner)
@@ -545,20 +542,18 @@ module RubyLsp
         end
 
         def enclosing_method_info(ctx)
-          method = ctx.surrounding_method
+          method = HostContext.surrounding_method_name(ctx)
           return nil unless method
 
-          nesting = Array(ctx.nesting)
-          singleton = nesting.any? { |part| part.start_with?("<Class:") }
-          owner = nesting.reject { |part| part.start_with?("<Class:") }.join("::")
+          owner = HostContext.owner(ctx)
           return nil if owner.empty?
 
-          [owner, method, singleton]
+          [owner, method, HostContext.singleton?(ctx)]
         end
 
         def enclosing_class_owner(ctx)
-          nesting = Array(ctx.nesting).reject { |part| part.start_with?("<Class:") }
-          nesting.empty? ? nil : nesting.join("::")
+          owner = HostContext.owner(ctx)
+          owner.empty? ? nil : owner
         end
 
         # --- Small helpers -----------------------------------------------------------------------------------------

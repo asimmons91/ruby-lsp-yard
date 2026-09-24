@@ -24,7 +24,7 @@ module RubyLsp
       end
 
       def setup
-        @adapter = Indexer::RubyIndexerAdapter.new(self.class.core_index)
+        @adapter = Indexer.wrap(self.class.core_index)
         @store = SignatureStore.new(@adapter, rbs: self.class.rbs_source)
         @engine = Inference::Engine.new(adapter: @adapter, store: @store)
       end

@@ -7,14 +7,16 @@ carry thorough YARD documentation.
 ## Status
 
 **M0 (foundation), M1 (YARD parsing, signature store, hover), M2 (inference, completion, definition), M3
-(core/stdlib types, generics, gem caching), M4 (YARD authoring) and M5 (YARD diagnostics) are complete.** The
+(core/stdlib types, generics, gem caching), M4 (YARD authoring), M5 (YARD diagnostics) and M6 (Rubydex
+backend) are complete.** The
 add-on reads YARD `@param` and `@return` tags through the `yard` gem's docstring parser and infers receiver types
 from literals, constants, `self`, method parameters, local and instance variable assignments, `Foo.new`, call
 chains, unions, duck types and blocks. Core and stdlib signatures come from RBS, generic type variables are
 substituted at the call site, and YARD comments in dependency gems are cached on disk. Inside comments,
 completion helps write tags, types and parameters, hover and go to definition work on type names, and a code
 action inserts a comment skeleton. Diagnostics report broken or inconsistent YARD documentation with configurable
-severities and quick fixes. The Ruby 0.27 backend and advanced directives land in M6–M7; see
+severities and quick fixes. The add-on runs on Ruby LSP 0.26 (`RubyIndexer`) and 0.27 (`Rubydex`) through the
+same Indexer Adapter. Advanced directives land in M7; see
 [`docs/requirements_v1.md`](docs/requirements_v1.md) for the full plan.
 
 Known gaps:
@@ -25,10 +27,10 @@ Known gaps:
   `enableAuthoring` as well as `enableDiagnostics`.
 - `YARD/MissingParam`, `YARD/MissingReturn`, `YARD/ArgumentTypeMismatch` and `YARD/ReturnTypeMismatch` are off by
   default (the light type checks are conservative and opt-in).
-- Signature help has no add-on hook in Ruby LSP 0.26 (`Requests::SignatureHelp` ignores add-ons), so the
-  `enableSignatureHelp` setting is reserved until an upstream hook exists or a later milestone patches it.
-- Inlay hints have no add-on hook either (`Requests::InlayHints` ignores add-ons), so `enableInlayHints` is
-  reserved and FR-M2-20 is descoped until a hook appears.
+- Signature help has no add-on hook in Ruby LSP (`Requests::SignatureHelp` ignores add-ons in both 0.26 and 0.27),
+  so the `enableSignatureHelp` setting is reserved until an upstream hook exists or a later milestone patches it.
+- Inlay hints have no add-on hook either (`Requests::InlayHints` ignores add-ons in both versions), so
+  `enableInlayHints` is reserved and FR-M2-20 is descoped until a hook appears.
 - Ruby LSP only target-hovers `CallNode` and the other node types in `Listeners::Hover::ALLOWED_TARGETS`, which
   excludes `def` nodes, so definitions are not enriched.
 - Comment authoring is a version-guarded patch (D3) and only activates on the Ruby LSP versions listed in
@@ -43,7 +45,8 @@ Known gaps:
 ## Requirements
 
 - Ruby >= 3.4
-- Ruby LSP 0.26.x (`0.27`/Rubydex support is planned, see milestone M6)
+- Ruby LSP 0.26.x (`RubyIndexer`) or 0.27 (`Rubydex`; the 0.27 CI leg pins the tested prerelease, currently
+  `0.27.0.beta5`)
 - `yard` >= 0.9 (`~> 0.9`) is installed as a runtime dependency for docstring parsing only; the Registry,
   `yardoc` and HTML generation are never used
 - `rbs` >= 3, < 5 is installed as a runtime dependency for core/stdlib signatures; the RBS environment is built
@@ -256,12 +259,13 @@ bundle exec rake test                      # tests only
 bundle exec rake corpus                    # parse the YARD comments of installed top gems (NFR-T3)
 bundle exec rake benchmark                 # inference, completion and RBS latency (NFR-P2/P3)
 BUNDLE_GEMFILE=gemfiles/ruby_lsp_0.26.gemfile bundle exec rake   # a specific ruby-lsp version
+BUNDLE_GEMFILE=gemfiles/ruby_lsp_0.27.gemfile bundle exec rake   # the Rubydex backend
 ```
 
 - `Gemfile.common` holds the shared development dependencies; each `gemfiles/ruby_lsp_*.gemfile` pins one
   supported Ruby LSP minor. CI runs the matrix in `.github/workflows/main.yml`.
-- All indexer access goes through `RubyLsp::Yard::Indexer::Adapter`. Backends are validated by the shared
-  contract in `test/support/adapter_contract.rb`, which the Rubydex backend will reuse in M6.
+- All indexer access goes through `RubyLsp::Yard::Indexer::Adapter`. Both backends (`RubyIndexer` for 0.26,
+  `Rubydex` for 0.27) are validated by the shared contract in `test/support/adapter_contract.rb`.
 - `lib/ruby_lsp_yard/rbs/` loads RBS core/stdlib signatures in the background and converts them to the internal
   type model; `lib/ruby_lsp_yard/gems/` locates gem files and caches their parsed signatures.
 - Fixture projects live in `test/fixtures/`.

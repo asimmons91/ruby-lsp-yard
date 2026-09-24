@@ -6,6 +6,7 @@ module AdapterContract
   ANIMAL = "FixtureProject::Animal"
   DOG = "FixtureProject::Dog"
   GREETABLE = "FixtureProject::Greetable"
+  ATTRIBUTE_SHAPES = "FixtureProject::AttributeShapes"
 
   def adapter
     @adapter ||= build_adapter(index)
@@ -99,6 +100,40 @@ module AdapterContract
   def test_attribute_definitions_never_raise_for_unknown_attributes
     assert_empty adapter.attribute_definitions(ANIMAL, "nope")
     assert_empty adapter.attribute_definitions("No::Such", "name")
+  end
+
+  def test_methods_and_attributes_with_the_same_name_coexist
+    method = adapter.method_definitions(ATTRIBUTE_SHAPES, "timeout").first
+    writer = adapter.method_definitions(ATTRIBUTE_SHAPES, "timeout=").first
+
+    refute_nil method
+    assert_equal :method, method.kind
+    assert_empty method.parameters
+    refute_nil writer
+    assert_equal "timeout=", writer.name
+    assert_equal :attribute, writer.kind
+    assert_equal ["timeout="], adapter.attribute_definitions(ATTRIBUTE_SHAPES, "timeout").map(&:name)
+  end
+
+  def test_writer_lookups_require_a_writer_definition
+    assert_empty adapter.method_definitions(ATTRIBUTE_SHAPES, "reader_only=")
+    assert_empty adapter.methods_of(ATTRIBUTE_SHAPES, prefix: "reader_only=")
+  end
+
+  def test_writer_only_attributes_have_no_reader_lookup
+    assert_empty adapter.method_definitions(ATTRIBUTE_SHAPES, "writer_only")
+    writer = adapter.method_definitions(ATTRIBUTE_SHAPES, "writer_only=").first
+
+    refute_nil writer
+    assert_equal "writer_only=", writer.name
+    assert_equal [::RubyLsp::Yard::Indexer::Parameter.new(:value, :required)], writer.parameters
+  end
+
+  def test_aliases_are_reported_as_method_aliases
+    definition = adapter.method_definitions(ATTRIBUTE_SHAPES, "timed_out").first
+
+    refute_nil definition
+    assert_equal :method_alias, definition.kind
   end
 
   def test_constant_definitions_return_namespaces_and_constants_with_comments

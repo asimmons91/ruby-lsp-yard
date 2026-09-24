@@ -3,7 +3,7 @@
 require_relative "support"
 require "ruby_lsp_yard/rbs"
 
-adapter = RubyLsp::Yard::Indexer::RubyIndexerAdapter.new(BenchmarkSupport.index)
+adapter = RubyLsp::Yard::Indexer.wrap(BenchmarkSupport.index)
 loader = RubyLsp::Yard::Rbs::Loader.new(background: false)
 loader.start
 store = RubyLsp::Yard::SignatureStore.new(adapter, rbs: RubyLsp::Yard::Rbs::Source.new(loader))

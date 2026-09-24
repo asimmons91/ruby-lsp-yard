@@ -190,7 +190,7 @@ module RubyLsp
         end
 
         def adapter
-          @adapter ||= Indexer::RubyIndexerAdapter.new(build_fixture_index)
+          @adapter ||= Indexer.wrap(build_fixture_index)
         end
       end
     end

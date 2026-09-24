@@ -4,13 +4,25 @@
 # completion and definition listener tests stay close to what an editor would see.
 module LspHelpers
   def index_fixtures(server)
-    IndexHelpers::FIXTURE_FILES.each { |file| server.global_state.index.index_file(fixture_uri(file)) }
+    if IndexHelpers.rubydex?
+      graph = server.global_state.graph
+      graph.index_all(IndexHelpers::FIXTURE_FILES.map { |file| fixture_path(file) })
+      graph.resolve
+    else
+      IndexHelpers::FIXTURE_FILES.each { |file| server.global_state.index.index_file(fixture_uri(file)) }
+    end
   end
 
   # Adds the RBS-derived core entries to the server's index, like a real Ruby LSP session does during `index_all`.
   def index_core(server)
-    require "rbs"
-    RubyIndexer::RBSIndexer.new(server.global_state.index).index_ruby_core
+    if IndexHelpers.rubydex?
+      graph = server.global_state.graph
+      graph.index_all(IndexHelpers.rbs_core_paths)
+      graph.resolve
+    else
+      require "rbs"
+      RubyIndexer::RBSIndexer.new(server.global_state.index).index_ruby_core
+    end
   end
 
   # The add-on loads its RBS environment in the background (NFR-P1); tests that assert core types wait for it.

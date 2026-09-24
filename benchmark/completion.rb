@@ -2,7 +2,7 @@
 
 require_relative "support"
 
-adapter = RubyLsp::Yard::Indexer::RubyIndexerAdapter.new(BenchmarkSupport.index)
+adapter = RubyLsp::Yard::Indexer.wrap(BenchmarkSupport.index)
 store = RubyLsp::Yard::SignatureStore.new(adapter)
 
 # The expensive part of completion is collecting candidates without reading comments and enriching the documented
