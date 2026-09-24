@@ -159,6 +159,26 @@ module RubyLsp
         assert_includes signature.to_markdown, "**Option:** `:strict` (`Boolean`)"
       end
 
+      def test_renders_yield_tags
+        signature = @store.lookup(DOCUMENTED, "each_value")
+
+        refute_nil signature
+        assert signature.renderable?
+        markdown = signature.to_markdown
+        assert_includes markdown, "**Yields:** each value"
+        assert_includes markdown, "**Yields:** `value` (`String`) — the value"
+        assert_includes markdown, "**Yields:** `Integer` (return)"
+      end
+
+      def test_renders_example_tags
+        signature = @store.lookup(DOCUMENTED, "fetch")
+
+        markdown = signature.to_markdown
+        assert_includes markdown, "**Example:** Reverse"
+        assert_includes markdown, "**Example:** With fallback"
+        assert_includes markdown, "```ruby\nfetch(:key, \"fallback\")\n```"
+      end
+
       def test_builds_overloads
         signature = @store.lookup(DOCUMENTED, "find")
 

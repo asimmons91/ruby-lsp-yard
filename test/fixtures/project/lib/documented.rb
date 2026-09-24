@@ -52,6 +52,9 @@ module FixtureProject
     # @option options [Boolean] :strict fail when the key is missing
     # @raise [KeyError] when strict and the key is missing
     # @deprecated Use {#find} instead.
+    # @example Reverse
+    # @example With fallback
+    #   fetch(:key, "fallback")
     # @return [Array<String>, nil] matching values
     def fetch(key, default = nil, limit: 10, **options, &block)
       yield(key) if block
