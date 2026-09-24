@@ -234,6 +234,23 @@ registration. Every gap above has a disposition; upstream rows become issues aga
 - The corpus test (NFR-T3) parses ≥ 99% of type expressions in the top 100 gems.
 - Hover and signature help show types for calls on `self`, on constants and on `Foo.new` receivers.
 
+### 6.5 M1 implementation notes (2026-09-24)
+- **FR-M1-13 (signature help)** is blocked by the API gap recorded in §5.1: Ruby LSP 0.26's
+  `Requests::SignatureHelp` ignores add-ons. It is descoped from M1 and tracked as an upstream request;
+  `enableSignatureHelp` is reserved.
+- **FR-M1-14** ships with the M4 comment patch (FR-M4-P6). M1 hover covers method calls only.
+- 0.26's hover targets (`Listeners::Hover::ALLOWED_TARGETS`) exclude `def` nodes, so the FR-M1-12 mention of
+  hover on a method *definition* is unreachable for add-ons; only calls and the other allowed nodes can be
+  served.
+- M1 reuses Ruby LSP's `TypeInferrer` for receiver types; the M2 inference engine replaces it behind the same
+  wrapper.
+- Every `@overload` is rendered as its own signature on M1 hover until signature help is available.
+- Directive discovery is limited to comments attached to an indexed entry (class, module, constant, method or
+  attribute); standalone directive comments attached to nothing are not visible to the indexer.
+- NFR-T3 runs as the opt-in `rake corpus` task and the scheduled `YARD corpus` workflow, which installs the
+  snapshot in `test/corpus/gems.txt`. The default suite keeps a small committed corpus with a zero-failure
+  assertion.
+
 ---
 
 ## 7. Milestone M2 — Type inference & method completion

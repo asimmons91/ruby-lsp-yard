@@ -40,6 +40,12 @@ module RubyLsp
           raise NotImplementedError
         end
 
+        # Returns the constant, class and module definitions named `name` (fully qualified), including their
+        # comments. Used to find `@!method`, `@!attribute` and `@!parse` directives on namespaces.
+        def constant_definitions(name)
+          raise NotImplementedError
+        end
+
         # Resolves a possibly unqualified constant reference relative to `nesting` and returns its fully qualified
         # name, or nil when it cannot be resolved.
         def resolve_constant(name, nesting)
