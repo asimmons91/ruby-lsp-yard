@@ -3,6 +3,7 @@
 $LOAD_PATH.unshift File.expand_path("../lib", __dir__)
 
 require "ruby_lsp/internal"
+require "ruby_lsp_yard/indexer"
 require "ruby_lsp_yard/inference"
 require "ruby_lsp_yard/signature_store"
 
@@ -15,7 +16,13 @@ module BenchmarkSupport
   module_function
 
   def index
-    @index ||= begin
+    @index ||= if RubyLsp::Yard::Indexer.rubydex?
+      graph = Rubydex::Graph.new
+      graph.index_all(FIXTURE_FILES.map { |name| File.join(FIXTURE_DIR, "#{name}.rb") })
+      graph.index_all([File.join(Gem::Specification.find_by_name("rbs").full_gem_path, "core")])
+      graph.resolve
+      graph
+    else
       index = RubyIndexer::Index.new
       FIXTURE_FILES.each { |name| index.index_file(URI::Generic.from_path(path: File.join(FIXTURE_DIR, "#{name}.rb"))) }
       require "rbs"

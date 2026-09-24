@@ -8,8 +8,10 @@ module RubyLsp
       class TestPatch < Minitest::Test
         def test_only_tested_versions_are_supported
           assert Patch.supported_version?("0.26.11")
+          assert Patch.supported_version?("0.27.0.beta5")
           refute Patch.supported_version?("0.26.10")
           refute Patch.supported_version?("0.27.0")
+          refute Patch.supported_version?("0.27.0.beta4")
         end
 
         # FR-M4-P2: bumping the installed Ruby LSP must update the tested-versions list.

@@ -2,6 +2,7 @@
 
 require "prism"
 
+require_relative "../host_context"
 require_relative "../types"
 require_relative "responses"
 
@@ -16,7 +17,10 @@ module RubyLsp
         include RubyLsp::Requests::Support::Common
         include Responses
 
-        ENRICHMENT_LIMIT = 100
+        # Caps the per-request enrichment work. Rubydex exposes the full ancestor chain for core classes (String has
+        # ~270 candidates, warm enrichment measured at ~7 ms), so the cap must be high enough to cover them or the
+        # enriched item set would depend on backend member ordering (FR-M6-04).
+        ENRICHMENT_LIMIT = 300
 
         def initialize(response_builder, node_context, dispatcher, adapter:, store:, inference:, log: nil)
           @response_builder = response_builder
@@ -200,8 +204,8 @@ module RubyLsp
         end
 
         def enclosing_class
-          nesting = Array(@node_context.nesting).reject { |part| part.start_with?("<Class:") }
-          nesting.empty? ? nil : nesting.join("::")
+          owner = HostContext.owner(@node_context)
+          owner.empty? ? nil : owner
         end
 
         def ancestors_for(owner)

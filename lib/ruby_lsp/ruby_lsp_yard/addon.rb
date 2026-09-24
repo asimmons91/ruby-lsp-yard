@@ -18,7 +18,7 @@ require_relative "../../ruby_lsp_yard/settings"
 require_relative "../../ruby_lsp_yard/signature_store"
 require_relative "../../ruby_lsp_yard/version"
 
-RubyLsp::Addon.depend_on_ruby_lsp!("~> 0.26.0")
+RubyLsp::Addon.depend_on_ruby_lsp!(">= 0.26.0", "< 0.28.0")
 
 module RubyLsp
   module Yard

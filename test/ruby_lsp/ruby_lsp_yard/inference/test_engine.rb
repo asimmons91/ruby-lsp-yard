@@ -26,7 +26,7 @@ module RubyLsp
         end
 
         def setup
-          @adapter = Indexer::RubyIndexerAdapter.new(index)
+          @adapter = Indexer.wrap(index)
           @store = SignatureStore.new(@adapter, rbs: self.class.rbs_source)
           @engine = Engine.new(adapter: @adapter, store: @store)
         end
@@ -98,6 +98,24 @@ module RubyLsp
           assert_equal(
             Types::Singleton.new(DOCUMENTED),
             type_at(singleton_source, "self", node_types: [Prism::SelfNode], occurrence: 1)
+          )
+        end
+
+        # `def Foo.bar` is the same singleton scope as `def self.bar`; both backends have to agree (FR-M6-04).
+        def test_infers_self_in_constant_receiver_methods
+          source = <<~RUBY
+            module FixtureProject
+              class Documented
+                def Documented.use
+                  self
+                end
+              end
+            end
+          RUBY
+
+          assert_equal(
+            Types::Singleton.new(DOCUMENTED),
+            type_at(source, "self", node_types: [Prism::SelfNode], occurrence: 0)
           )
         end
 

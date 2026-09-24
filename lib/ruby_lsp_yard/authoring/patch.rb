@@ -23,7 +23,7 @@ module RubyLsp
       # The patch is only applied to the versions listed in {TESTED_VERSIONS} (FR-M4-P2). Any exception inside a
       # patched method falls back to the original behavior (FR-M4-P4, NFR-R2).
       module Patch
-        TESTED_VERSIONS = %w[0.26.11].freeze
+        TESTED_VERSIONS = %w[0.26.11 0.27.0.beta5].freeze
 
         PATCHED_METHODS = {
           "RubyLsp::Requests::Completion" => %i[initialize perform],

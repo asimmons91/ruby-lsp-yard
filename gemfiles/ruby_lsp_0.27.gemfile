@@ -1,0 +1,7 @@
+# frozen_string_literal: true
+
+eval_gemfile(File.expand_path("../Gemfile.common", __dir__))
+
+# Ruby LSP 0.27 replaced RubyIndexer with Rubydex. Pinned exactly so the comment authoring patch allowlist
+# stays deterministic (FR-M4-P2, FR-M6-03).
+gem "ruby-lsp", "0.27.0.beta5"

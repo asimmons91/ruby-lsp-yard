@@ -21,13 +21,7 @@ module RubyLsp
         # Core signatures are needed so `String`, `Integer` and friends resolve; the shared fixture index used by
         # the adapter contract tests stays core-free so its ancestor assertions hold.
         def core_index
-          @core_index ||= begin
-            helper = Object.new.extend(IndexHelpers)
-            index = helper.build_fixture_index
-            require "rbs"
-            RubyIndexer::RBSIndexer.new(index).index_ruby_core
-            index
-          end
+          @core_index ||= Object.new.extend(IndexHelpers).build_core_index
         end
 
         def rbs_source
@@ -36,7 +30,7 @@ module RubyLsp
       end
 
       def setup
-        @adapter = Indexer::RubyIndexerAdapter.new(index)
+        @adapter = Indexer.wrap(index)
         @store = SignatureStore.new(@adapter)
       end
 
@@ -243,7 +237,7 @@ module RubyLsp
       end
 
       def test_visibility_overrides_are_found_through_subclasses
-        store = SignatureStore.new(Indexer::RubyIndexerAdapter.new(index))
+        store = SignatureStore.new(Indexer.wrap(index))
 
         signature = store.lookup("FixtureProject::FactoryChild", "setup")
 
@@ -270,7 +264,7 @@ module RubyLsp
       end
 
       def test_never_raises_on_broken_docs
-        store = SignatureStore.new(Indexer::RubyIndexerAdapter.new(index))
+        store = SignatureStore.new(Indexer.wrap(index))
         adapter = store.instance_variable_get(:@adapter)
         adapter.define_singleton_method(:method_definitions) { |*| raise "boom" }
 
@@ -307,7 +301,7 @@ module RubyLsp
 
       def test_rbs_signatures_replace_fallbacks_once_the_environment_is_ready
         source = FakeRbsSource.new
-        store = SignatureStore.new(Indexer::RubyIndexerAdapter.new(index), rbs: source)
+        store = SignatureStore.new(Indexer.wrap(index), rbs: source)
 
         before = store.lookup("String", "split")
 
@@ -324,7 +318,7 @@ module RubyLsp
       def test_gem_backed_signatures_are_persisted_to_the_disk_cache
         root = Dir.mktmpdir("ruby-lsp-yard-store")
         locator = FixtureGemLocator.new(IndexHelpers::FIXTURES_PATH)
-        store = SignatureStore.new(Indexer::RubyIndexerAdapter.new(index), gem_cache: Gems::Cache.new(root: root, locator: locator))
+        store = SignatureStore.new(Indexer.wrap(index), gem_cache: Gems::Cache.new(root: root, locator: locator))
 
         refute_nil store.lookup(ANIMAL, "speak")
 
@@ -340,7 +334,7 @@ module RubyLsp
       private
 
       def rbs_store
-        SignatureStore.new(Indexer::RubyIndexerAdapter.new(index), rbs: self.class.rbs_source)
+        SignatureStore.new(Indexer.wrap(index), rbs: self.class.rbs_source)
       end
 
       # A deferrable RBS source so tests can fill the store before the environment is ready.

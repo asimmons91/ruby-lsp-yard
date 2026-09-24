@@ -159,10 +159,6 @@ module RubyLsp
           response&.contents&.value
         end
 
-        def index_fixtures(server)
-          FIXTURE_FILES.each { |file| server.global_state.index.index_file(fixture_uri(file)) }
-        end
-
         def disable_hover(server)
           addon = RubyLsp::Addon.addons.find { |candidate| candidate.name == "Ruby LSP YARD" }
           addon.define_singleton_method(:settings) { Settings.new({enableHover: false}) }

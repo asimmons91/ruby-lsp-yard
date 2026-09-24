@@ -9,16 +9,13 @@ require "ruby_lsp_yard/indexer"
 # Builds documents and runs the diagnostics linter without starting the server. Including this module gives the test
 # class a shared core index that mirrors a real Ruby LSP session, so type names resolve.
 module DiagnosticsHelpers
+  include IndexHelpers
+
   TEST_URI = URI("file:///tmp/ruby-lsp-yard-diagnostics.rb")
 
   module ClassMethods
     def core_index
-      @core_index ||= begin
-        require "rbs"
-        index = RubyIndexer::Index.new
-        RubyIndexer::RBSIndexer.new(index).index_ruby_core
-        index
-      end
+      @core_index ||= Object.new.extend(IndexHelpers).build_core_index
     end
   end
 
@@ -36,9 +33,8 @@ module DiagnosticsHelpers
 
   # Indexes `source` into `index` (which defaults to the shared core index) and runs the linter over it.
   def lint(source, index: core_index, rules: nil, settings: {}, uri: TEST_URI)
-    index.delete(uri)
-    index.index_single(uri, source)
-    adapter = RubyLsp::Yard::Indexer::RubyIndexerAdapter.new(index)
+    index_source(index, uri, source)
+    adapter = RubyLsp::Yard::Indexer.wrap(index)
     store = RubyLsp::Yard::SignatureStore.new(adapter)
     inference = RubyLsp::Yard::Inference::Engine.new(adapter: adapter, store: store, host: global_state.type_inferrer)
     linter = RubyLsp::Yard::Diagnostics::Linter.new(
@@ -70,9 +66,8 @@ module DiagnosticsHelpers
 
   # The quick-fix actions for a zero-width range at `line`/`character` (FR-M5-03).
   def fix_actions(source, line:, character: 0, index: core_index, rules: nil, settings: {}, uri: TEST_URI)
-    index.delete(uri)
-    index.index_single(uri, source)
-    adapter = RubyLsp::Yard::Indexer::RubyIndexerAdapter.new(index)
+    index_source(index, uri, source)
+    adapter = RubyLsp::Yard::Indexer.wrap(index)
     store = RubyLsp::Yard::SignatureStore.new(adapter)
     inference = RubyLsp::Yard::Inference::Engine.new(adapter: adapter, store: store, host: global_state.type_inferrer)
     linter = RubyLsp::Yard::Diagnostics::Linter.new(

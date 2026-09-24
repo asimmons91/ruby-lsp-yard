@@ -26,7 +26,7 @@ module RubyLsp
         addon = activate_addon
 
         refute addon.error?
-        assert_instance_of Indexer::RubyIndexerAdapter, addon.indexer
+        assert_instance_of Indexer.adapter_class, addon.indexer
         assert_instance_of SignatureStore, addon.signature_store
         assert_instance_of Inference::Engine, addon.inference
         refute_nil addon.log
@@ -123,7 +123,7 @@ module RubyLsp
 
           refute_nil addon
           refute addon.error?
-          assert_instance_of Indexer::RubyIndexerAdapter, addon.indexer
+          assert_instance_of Indexer.adapter_class, addon.indexer
         end
       end
 

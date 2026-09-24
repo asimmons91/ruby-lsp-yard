@@ -140,7 +140,7 @@ module RubyLsp
         end
 
         def store
-          @store ||= SignatureStore.new(Indexer::RubyIndexerAdapter.new(build_fixture_index))
+          @store ||= SignatureStore.new(Indexer.wrap(build_fixture_index))
         end
       end
     end
