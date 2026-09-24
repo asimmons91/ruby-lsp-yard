@@ -86,10 +86,10 @@ module RubyLsp
           @overloads.any?(&:typed?)
       end
 
-      # Whether the signature carries structured information worth showing on hover without repeating Ruby LSP's
-      # raw docstring output (D13).
+      # Whether the signature carries anything {#to_markdown} can show on hover (D13).
       def renderable?
-        typed? || deprecated? || @raises.any? || @options.any?
+        typed? || deprecated? || @raises.any? || @options.any? ||
+          @yields.any? || @yield_params.any? || @yield_returns.any? || @metadata.any?
       end
 
       # The one-line signature shown on hover, e.g. `def fetch(key: Symbol, default: String?) → String`.
@@ -110,12 +110,12 @@ module RubyLsp
         @yields.each { |yield_tag| lines << "**Yields:** #{yield_tag.text}" unless yield_tag.text.to_s.empty? }
         @yield_params.each do |param|
           type = Types.unknown?(param.types) ? "" : " (`#{Types::Formatter.format(param.types)}`)"
-          lines << "**Yields:** `#{param.name}`#{type}#{" — #{param.text}" unless param.text.to_s.empty?}"
+          lines << "**Yields:** `#{param.name}`#{type}#{" — #{param.description}" unless param.description.to_s.empty?}"
         end
         @yield_returns.each do |yield_return|
-          next if yield_return.types.empty?
+          next if Types.unknown?(yield_return)
 
-          lines << "**Yields:** `#{Types::Formatter.format(Types.union(yield_return.types))}` (return)"
+          lines << "**Yields:** `#{Types::Formatter.format(yield_return)}` (return)"
         end
         @options.each do |option|
           types = Types.unknown?(option.types) ? "" : " (`#{Types::Formatter.format(option.types)}`)"
@@ -184,7 +184,17 @@ module RubyLsp
         when "since" then "**Since:** #{text}"
         when "api" then "**API:** #{text}"
         when "todo" then "**Todo:** #{text}"
+        when "example" then example_line(metadata)
         end
+      end
+
+      def example_line(metadata)
+        title = metadata.name.to_s.strip
+        body = metadata.text.to_s.strip
+        line = "**Example:** #{title}".rstrip
+        return line if body.empty?
+
+        "#{line}\n\n```ruby\n#{body}\n```"
       end
     end
   end

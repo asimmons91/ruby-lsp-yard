@@ -76,7 +76,7 @@ Hovering a method call whose receiver type Ruby LSP can infer (`self`, a constan
 signature built from YARD tags, for example:
 
 ```ruby
-def fetch(key: Symbol, default = ...: String?, limit: ...: Integer, **options: Hash, &block) → Array<String>?
+def fetch(key: Symbol, default = ...: String?, limit: Integer = ..., **options: Hash, &block) → Array<String>?
 ```
 
 `@raise`, `@deprecated`, `@option`, `@yield`/`@yieldparam`/`@yieldreturn` and `@note`/`@see`/`@since`/`@api`

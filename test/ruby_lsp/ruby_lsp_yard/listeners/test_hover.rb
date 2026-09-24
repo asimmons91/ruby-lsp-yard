@@ -46,6 +46,16 @@ module RubyLsp
           assert_includes value, "def self.species() → String"
         end
 
+        def test_hover_shows_yield_tags
+          source = "FixtureProject::Documented.new.each_value { |value| value }\n"
+
+          value = hover_on(source, "each_value")
+
+          refute_nil value
+          assert_includes value, "**Yields:** `value` (`String`) — the value"
+          assert_includes value, "**Yields:** `Integer` (return)"
+        end
+
         def test_hover_shows_overloads
           source = "FixtureProject::Documented.new.find(:key)\n"
 
