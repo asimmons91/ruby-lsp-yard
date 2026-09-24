@@ -1,0 +1,15 @@
+module RubyLsp
+  module Yard
+    VERSION: String
+
+    class Error < StandardError
+    end
+
+    class Addon
+      def activate: (untyped global_state, untyped outgoing_queue) -> void
+      def deactivate: () -> void
+      def name: () -> String
+      def version: () -> String
+    end
+  end
+end

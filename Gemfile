@@ -10,4 +10,6 @@ gem "rake", "~> 13.0"
 
 gem "minitest", "~> 5.16"
 
+gem "ruby-lsp", "~> 0.26.0"
+
 gem "standard", "~> 1.3"

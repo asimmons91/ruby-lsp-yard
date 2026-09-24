@@ -1,10 +1,10 @@
 # frozen_string_literal: true
 
-require_relative "lib/ruby/lsp/yard/version"
+require_relative "lib/ruby_lsp_yard/version"
 
 Gem::Specification.new do |spec|
   spec.name = "ruby-lsp-yard"
-  spec.version = Ruby::Lsp::Yard::VERSION
+  spec.version = RubyLsp::Yard::VERSION
   spec.authors = ["Austin Simmons"]
   spec.email = ["austin_simmons@fastmail.com"]
 
