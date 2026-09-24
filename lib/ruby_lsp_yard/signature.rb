@@ -148,10 +148,14 @@ module RubyLsp
       end
 
       def display_param(param)
-        decorated = decorated_name(param)
-        return decorated if Types.unknown?(param.types)
+        return decorated_name(param) if Types.unknown?(param.types)
 
-        "#{decorated}: #{Types::Formatter.format(param.types)}"
+        formatted = Types::Formatter.format(param.types)
+        case param.kind
+        when :keyword then "#{param.name}: #{formatted}"
+        when :keyword_optional then "#{param.name}: #{formatted} = ..."
+        else "#{decorated_name(param)}: #{formatted}"
+        end
       end
 
       def decorated_name(param)
