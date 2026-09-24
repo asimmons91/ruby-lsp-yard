@@ -7,8 +7,12 @@ module RubyLsp
       # host indexer. Feature listeners convert these into LSP locations.
       Location = Struct.new(:start_line, :start_column, :end_line, :end_column)
 
-      # Backend-neutral view of a method or attribute definition returned by the Indexer Adapter. Host indexer entry
-      # objects must never leak past the adapter.
+      # Backend-neutral view of a method parameter. `kind` is one of `:required`, `:optional`, `:keyword`,
+      # `:keyword_optional`, `:rest`, `:keyword_rest`, `:block` or `:forwarding`.
+      Parameter = Struct.new(:name, :kind)
+
+      # Backend-neutral view of a method, attribute, class, module or constant definition returned by the Indexer
+      # Adapter. Host indexer entry objects must never leak past the adapter.
       Definition = Struct.new(
         :name,
         :owner,
@@ -16,7 +20,8 @@ module RubyLsp
         :visibility,
         :uri,
         :location,
-        :comments
+        :comments,
+        :parameters
       )
     end
   end

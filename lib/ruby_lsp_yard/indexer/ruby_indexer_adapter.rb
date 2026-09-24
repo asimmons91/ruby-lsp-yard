@@ -34,6 +34,16 @@ module RubyLsp
           log_failure("attribute_definitions(#{owner.inspect}, #{name.inspect})", e)
         end
 
+        def constant_definitions(name)
+          entries = Array(@index[name]).select do |entry|
+            entry.is_a?(RubyIndexer::Entry::Namespace) || entry.is_a?(RubyIndexer::Entry::Constant)
+          end
+
+          map_entries(entries)
+        rescue => e
+          log_failure("constant_definitions(#{name.inspect})", e)
+        end
+
         def resolve_constant(name, nesting)
           @index.resolve(name, Array(nesting))&.first&.name
         rescue => e
@@ -71,12 +81,13 @@ module RubyLsp
         def definition_for(entry)
           Definition.new(
             name: entry.name,
-            owner: entry.owner&.name,
+            owner: entry.respond_to?(:owner) ? entry.owner&.name : nil,
             kind: kind_for(entry),
             visibility: entry.visibility,
             uri: entry.uri,
             location: location_for(entry),
-            comments: entry.comments
+            comments: entry.comments,
+            parameters: parameters_for(entry)
           )
         end
 
@@ -88,8 +99,47 @@ module RubyLsp
             :method_alias
           when RubyIndexer::Entry::Method
             :method
+          when RubyIndexer::Entry::Class
+            :class
+          when RubyIndexer::Entry::Module
+            :module
+          when RubyIndexer::Entry::Constant
+            :constant
           else
             :unknown
+          end
+        end
+
+        def parameters_for(entry)
+          return [Parameter.new(:value, :required)] if entry.is_a?(RubyIndexer::Entry::Accessor) && entry.name.end_with?("=")
+
+          signatures = entry.respond_to?(:signatures) ? entry.signatures : nil
+          first_signature = signatures&.first
+          return [] unless first_signature
+
+          first_signature.parameters.map do |parameter|
+            Parameter.new(parameter.name, parameter_kind(parameter))
+          end
+        end
+
+        def parameter_kind(parameter)
+          case parameter
+          when RubyIndexer::Entry::OptionalParameter
+            :optional
+          when RubyIndexer::Entry::KeywordParameter
+            :keyword
+          when RubyIndexer::Entry::OptionalKeywordParameter
+            :keyword_optional
+          when RubyIndexer::Entry::RestParameter
+            :rest
+          when RubyIndexer::Entry::KeywordRestParameter
+            :keyword_rest
+          when RubyIndexer::Entry::BlockParameter
+            :block
+          when RubyIndexer::Entry::ForwardingParameter
+            :forwarding
+          else
+            :required
           end
         end
 

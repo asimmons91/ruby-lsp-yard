@@ -50,6 +50,36 @@ module AdapterContract
     assert_equal :private, definition.visibility
   end
 
+  def test_method_definitions_expose_parameters
+    definition = adapter.method_definitions(ANIMAL, "signature").first
+
+    refute_nil definition
+    assert_equal(
+      %i[required optional rest keyword keyword_optional options block],
+      definition.parameters.map(&:name)
+    )
+    assert_equal(
+      %i[required optional rest keyword keyword_optional keyword_rest block],
+      definition.parameters.map(&:kind)
+    )
+  end
+
+  def test_method_definitions_without_parameters_return_an_empty_list
+    definition = adapter.method_definitions(DOG, "species", singleton: true).first
+    reader = adapter.attribute_definitions(ANIMAL, "name").first
+
+    refute_nil definition
+    assert_empty definition.parameters
+    assert_empty reader.parameters
+  end
+
+  def test_attribute_writers_expose_a_value_parameter
+    writer = adapter.attribute_definitions(ANIMAL, "age").find { |definition| definition.name == "age=" }
+
+    refute_nil writer
+    assert_equal [::RubyLsp::Yard::Indexer::Parameter.new(:value, :required)], writer.parameters
+  end
+
   def test_method_definitions_never_raise_for_unknown_names
     assert_empty adapter.method_definitions("No::Such", "method")
     assert_empty adapter.method_definitions(ANIMAL, "nope")
@@ -69,6 +99,26 @@ module AdapterContract
   def test_attribute_definitions_never_raise_for_unknown_attributes
     assert_empty adapter.attribute_definitions(ANIMAL, "nope")
     assert_empty adapter.attribute_definitions("No::Such", "name")
+  end
+
+  def test_constant_definitions_return_namespaces_and_constants_with_comments
+    definitions = adapter.constant_definitions(ANIMAL)
+    klass = definitions.find { |definition| definition.kind == :class }
+
+    refute_nil klass
+    assert_equal ANIMAL, klass.name
+    assert_includes klass.comments, "@!method self.build"
+
+    constant = adapter.constant_definitions("FixtureProject::DEFAULT_NAME").first
+    assert_equal :constant, constant.kind
+    assert_includes constant.comments, "@return [String]"
+
+    mod = adapter.constant_definitions(GREETABLE).first
+    assert_equal :module, mod.kind
+  end
+
+  def test_constant_definitions_never_raise_for_unknown_names
+    assert_empty adapter.constant_definitions("No::Such")
   end
 
   def test_resolve_constant_uses_the_given_nesting

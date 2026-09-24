@@ -11,6 +11,7 @@ module RubyLsp
 
           assert_raises(NotImplementedError) { adapter.method_definitions("Foo", "bar") }
           assert_raises(NotImplementedError) { adapter.attribute_definitions("Foo", "bar") }
+          assert_raises(NotImplementedError) { adapter.constant_definitions("Foo") }
           assert_raises(NotImplementedError) { adapter.resolve_constant("Foo", []) }
           assert_raises(NotImplementedError) { adapter.ancestors("Foo") }
           assert_raises(NotImplementedError) { adapter.methods_of("Foo") }

@@ -1,0 +1,31 @@
+name: YARD corpus
+
+on:
+  schedule:
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  corpus:
+    runs-on: ubuntu-latest
+    name: Parse the YARD comments of the top gems
+    env:
+      BUNDLE_GEMFILE: gemfiles/ruby_lsp_0.26.gemfile
+
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.4"
+          bundler-cache: true
+      - name: Install the corpus gems
+        run: |
+          grep -v '^#' test/corpus/gems.txt | xargs -n 1 -P 4 sh -c 'gem install --no-document --no-wrappers "$0" || true'
+      - name: Run the corpus test
+        run: bundle exec rake corpus

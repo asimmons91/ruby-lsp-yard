@@ -11,6 +11,9 @@ module IndexHelpers
   FIXTURE_FILES = %w[
     project/lib/animals.rb
     project/lib/nested.rb
+    project/lib/documented.rb
+    project/lib/directives.rb
+    project/lib/inheritance.rb
   ].freeze
 
   def build_fixture_index

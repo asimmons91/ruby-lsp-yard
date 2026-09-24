@@ -6,10 +6,114 @@ module RubyLsp
     end
 
     class Addon
+      attr_reader settings: Settings?
+      attr_reader indexer: Indexer::Adapter?
+      attr_reader signature_store: SignatureStore?
+      attr_reader receiver_inferrer: Inference::ReceiverInferrer?
+      attr_reader log: Log?
+
       def activate: (untyped global_state, untyped outgoing_queue) -> void
       def deactivate: () -> void
+      def workspace_did_change_watched_files: (untyped changes) -> void
+      def create_hover_listener: (untyped response_builder, untyped node_context, untyped dispatcher) -> void
       def name: () -> String
       def version: () -> String
+    end
+
+    class Settings
+      FEATURES: untyped
+      BOOLEAN_DEFAULTS: untyped
+      LOG_LEVELS: Array[Symbol]
+      def initialize: (untyped raw) -> void
+      def enabled?: (Symbol feature) -> bool
+      def log_level: () -> Symbol
+      def debug_inference?: () -> bool
+    end
+
+    class Log
+      def initialize: (untyped outgoing_queue, ?level: Symbol) -> void
+      def debug: (untyped message) -> void
+      def info: (untyped message) -> void
+      def warn: (untyped message) -> void
+      def error: (untyped message) -> void
+    end
+
+    class SignatureStore
+      def initialize: (Indexer::Adapter adapter, ?log: Log?) -> void
+      def lookup: (String? owner, (String | Symbol)? name, ?singleton: bool) -> Signature?
+      def invalidate: (untyped uris) -> void
+    end
+
+    class Signature
+      class Param
+        attr_accessor name: Symbol?
+        attr_accessor kind: Symbol?
+        attr_accessor types: untyped
+        attr_accessor description: String?
+        def typed?: () -> bool
+      end
+
+      class Option
+        attr_accessor name: String?
+        attr_accessor key: String?
+        attr_accessor types: untyped
+        attr_accessor default: untyped
+        attr_accessor description: String?
+      end
+
+      def initialize: (untyped kwargs) -> void
+      def deprecated?: () -> bool
+      def documented?: () -> bool
+      def typed?: () -> bool
+      def renderable?: () -> bool
+      def signature_line: () -> String
+      def to_markdown: () -> String
+    end
+
+    module Documentation
+      class TagExtractor
+        def initialize: (?log: Log?) -> void
+        def extract: (String? comments) -> RawDoc
+      end
+    end
+
+    module Types
+      UNKNOWN: untyped
+      NIL_TYPE: untyped
+      BOOLEAN: untyped
+      SELF: untyped
+      VOID: untyped
+      UNTYPED: untyped
+
+      class Parser
+        def initialize: (?resolver: untyped, ?nesting: Array[String]) -> void
+        def parse: (untyped type_string) -> untyped
+        def parse!: (untyped type_string) -> untyped
+        def parse_list: (Array[String] type_strings) -> untyped
+      end
+
+      module Formatter
+        def self.format: (untyped type) -> String
+      end
+    end
+
+    module Inference
+      class ReceiverInferrer
+        def initialize: (untyped type_inferrer) -> void
+        def owner_for: (untyped node_context) -> [String, bool]?
+      end
+    end
+
+    module Indexer
+      Location: untyped
+      Parameter: untyped
+      Definition: untyped
+
+      class Adapter
+        def initialize: (?log: Log?) -> void
+        def subscribe: () { (untyped) -> void } -> untyped
+        def on_change: (untyped uris) -> void
+      end
     end
   end
 end

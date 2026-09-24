@@ -11,6 +11,9 @@ module FixtureProject
     end
   end
 
+  # @!method self.build(name)
+  #   @param name [String] the animal name
+  #   @return [Animal]
   class Animal
     include Greetable
 
@@ -25,10 +28,22 @@ module FixtureProject
       @name = name
     end
 
+    # @param required [String]
+    def signature(required, optional = 1, *rest, keyword:, keyword_optional: 2, **options, &block)
+      [required, optional, rest, keyword, keyword_optional, options, block]
+    end
+
     # @param suffix [String]
     # @return [String]
     def speak(suffix)
       "#{name}#{suffix}"
+    end
+
+    # @param real [String]
+    # @param nope [Integer] not a real parameter
+    # @return [nil]
+    def only_one(real)
+      real
     end
 
     private
