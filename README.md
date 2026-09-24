@@ -6,12 +6,14 @@ carry thorough YARD documentation.
 
 ## Status
 
-**M0 (foundation), M1 (YARD parsing, signature store, hover), M2 (inference, completion, definition) and M3
-(core/stdlib types, generics, gem caching) are complete.** The add-on reads YARD `@param` and `@return` tags
-through the `yard` gem's docstring parser and infers receiver types from literals, constants, `self`, method
-parameters, local and instance variable assignments, `Foo.new`, call chains, unions, duck types and blocks. Core
-and stdlib signatures come from RBS, generic type variables are substituted at the call site, and YARD comments
-in dependency gems are cached on disk. Authoring, diagnostics and the Ruby 0.27 backend land in M4–M7; see
+**M0 (foundation), M1 (YARD parsing, signature store, hover), M2 (inference, completion, definition), M3
+(core/stdlib types, generics, gem caching) and M4 (YARD authoring) are complete.** The add-on reads YARD `@param`
+and `@return` tags through the `yard` gem's docstring parser and infers receiver types from literals, constants,
+`self`, method parameters, local and instance variable assignments, `Foo.new`, call chains, unions, duck types
+and blocks. Core and stdlib signatures come from RBS, generic type variables are substituted at the call site,
+and YARD comments in dependency gems are cached on disk. Inside comments, completion helps write tags, types and
+parameters, hover and go to definition work on type names, and a code action inserts a comment skeleton.
+Diagnostics and the Ruby 0.27 backend land in M5–M7; see
 [`docs/requirements_v1.md`](docs/requirements_v1.md) for the full plan.
 
 Known gaps:
@@ -20,9 +22,11 @@ Known gaps:
   `enableSignatureHelp` setting is reserved until an upstream hook exists or a later milestone patches it.
 - Inlay hints have no add-on hook either (`Requests::InlayHints` ignores add-ons), so `enableInlayHints` is
   reserved and FR-M2-20 is descoped until a hook appears.
-- Hover on a type name inside a YARD comment needs the comment-reaching patch from M4 and is not available yet.
 - Ruby LSP only target-hovers `CallNode` and the other node types in `Listeners::Hover::ALLOWED_TARGETS`, which
   excludes `def` nodes, so definitions are not enriched.
+- Comment authoring is a version-guarded patch (D3) and only activates on the Ruby LSP versions listed in
+  `lib/ruby_lsp_yard/authoring/patch.rb`; any other version disables it with one warning while the rest of the
+  add-on keeps working.
 - Solargraph-style inline `# @type [Foo]` annotations are deferred to M7 (D6), and the per-file Sorbet policy in
   D5 cannot be applied because the completion and definition hooks do not receive the file's Sorbet level.
 - `rbs collection` gem signatures (FR-M3-07) are deferred to M7; the RBS bridge covers core and stdlib only.
@@ -76,12 +80,14 @@ Settings live under `rubyLsp.addonSettings`, keyed by the add-on name. For VS Co
 | `enableInlayHints` | `false` | Reserved: no add-on hook in Ruby LSP 0.26 (see Status) |
 | `enableDiagnostics` | `true` | YARD diagnostics (M5) |
 | `enableAuthoring` | `true` | YARD comment completion and skeletons (M4) |
+| `enableSnippets` | `true` | Snippet placeholders in comment completion (`false` inserts plain text) |
 | `enableCoreTypes` | `true` | RBS core/stdlib signatures and generics |
 | `logLevel` | `"info"` | One of `debug`, `info`, `warn`, `error` |
 | `debugInference` | `false` | Logs how inference reached each result |
 
 Feature toggles are read during activation; invalid values fall back to the defaults, and no configuration is
-required at all.
+required at all. Comment completion and skeletons require `enableAuthoring`; comment hover additionally requires
+`enableHover` and comment definition `enableDefinition`.
 
 ## Hover
 
@@ -147,6 +153,32 @@ For `recv.m` whose receiver type is inferred from YARD — including parameters,
 chains — go to definition jumps to the definitions of `m` on the receiver's ancestors, including `extend`ed
 modules. When the add-on knows the receiver, its precise targets replace Ruby LSP's fallback of listing every
 method with that name; when it does not, the host response is left untouched.
+
+## YARD authoring
+
+Inside a YARD comment, the add-on offers tag, directive, type and parameter completion (FR-M4-01..05). Typing
+`# @ret` and accepting `@return` produces `# @return [Type]` with the type placeholder selected. `@param`
+suggestions are generated from the definition below and skip parameters that already have a tag; `@yield*` is
+only suggested for methods that yield or take a `&block`, and `@raise` is prefilled with the class of the first
+`raise SomeError` in the body. Inside `[...]`, constants come from the workspace index, resolved relative to the
+definition's nesting, alongside YARD's special names and snippets for `Array<T>`, `Hash{K => V}`, `Tuple(a, b)`
+and `Class<T>`.
+
+Because add-ons cannot register trigger characters, `[` does not open completion by itself; type completion
+needs Ctrl+Space. VS Code additionally disables as-you-type suggestions inside comments by default, so turn on
+`editor.quickSuggestions.comments` (or press Ctrl+Space) to see suggestions as you type (FR-M4-07).
+
+Hovering a type name inside a comment shows that class's documentation, and go to definition jumps to it
+(FR-M1-14, FR-M4-P6). A code action on an undocumented `def` inserts a full comment skeleton — a summary
+placeholder, one `@param` per parameter, `@yield*` when the method yields and `@return` — with types prefilled
+from inherited or overridden documentation when available (FR-M4-06).
+
+Comment support is a version-guarded patch (D3). It is only applied to the Ruby LSP versions listed in
+`lib/ruby_lsp_yard/authoring/patch.rb`; on any other version the add-on logs one warning and leaves Ruby LSP's
+behavior untouched. Comment completion uses snippet placeholders when the editor reports snippet support; Ruby
+LSP 0.26 applies client capabilities before add-ons load, so the capability is usually unknown and the add-on
+assumes support. Clients without snippets support can set `enableSnippets` to `false` to insert plain text
+(NFR-C3).
 
 ## Development
 

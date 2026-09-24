@@ -60,6 +60,40 @@ module LspHelpers
     pop_result(server).response.select { |item| item.is_a?(RubyLsp::Interface::LocationLink) }
   end
 
+  # Hover at `position_token` on the first line containing `line_token`. Returns the markdown value, or nil.
+  def hover_text(server, uri, source, line_token:, position_token: nil)
+    position_token ||= line_token
+    line = source.lines.index { |candidate| candidate.include?(line_token) }
+    character = source.lines[line].index(position_token) + 1
+
+    server.process_message({
+      id: 1,
+      method: "textDocument/hover",
+      params: {textDocument: {uri: uri}, position: {line: line, character: character}}
+    })
+
+    pop_result(server).response&.contents&.value
+  end
+
+  # Code actions for a zero-width range at `position_token` on the first line containing `line_token`.
+  def code_actions(server, uri, source, line_token:, position_token: nil)
+    line = source.lines.index { |candidate| candidate.include?(line_token) }
+    character = position_token ? source.lines[line].index(position_token) : 0
+    position = {line: line, character: character}
+
+    server.process_message({
+      id: 1,
+      method: "textDocument/codeAction",
+      params: {
+        textDocument: {uri: uri},
+        range: {start: position, end: position},
+        context: {diagnostics: []}
+      }
+    })
+
+    Array(pop_result(server).response).select { |item| item.is_a?(RubyLsp::Interface::CodeAction) }
+  end
+
   def override_addon_settings(settings)
     addon = RubyLsp::Addon.addons.find { |candidate| candidate.name == "Ruby LSP YARD" }
     addon.define_singleton_method(:settings) { RubyLsp::Yard::Settings.new(settings) }

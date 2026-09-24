@@ -421,6 +421,42 @@ registration. Every gap above has a disposition; upstream rows become issues aga
 - Typing `# @ret` then Tab produces `# @return [|]` in VS Code and Neovim (with nvim-cmp or blink).
 - Parameters that are already documented are not suggested again.
 
+### 9.1 M4 implementation notes (2026-09-24)
+- **Patch layout (FR-M4-P5).** All prepended modules live in `lib/ruby_lsp_yard/authoring/patch.rb` with the exact
+  upstream method each one wraps noted in the header: `Requests::Completion#initialize/#perform`,
+  `Requests::Hover#initialize/#perform`, `Requests::Definition#initialize/#perform`,
+  `Requests::CodeActions#perform` and `ClientCapabilities#apply_client_capabilities`.
+- **Version allowlist (FR-M4-P2).** `Patch::TESTED_VERSIONS` is exactly `%w[0.26.11]`. A unit test asserts the
+  installed `RubyLsp::VERSION` is listed, so bumping the `ruby-lsp` dependency fails CI until the patch is
+  re-checked and the list updated. Untested versions keep the rest of the add-on working and log one warning.
+- **FR-M4-06 uses the code-action patch.** 0.26 offers neither an add-on code-action hook nor a server-side
+  `workspace/executeCommand`, so the code-lens fallback in §5.1 cannot execute anything. `Requests::CodeActions`
+  is patched to append an eager `WorkspaceEdit` action for an undocumented `def` in the requested range. The
+  skeleton draws types from the signature store (inherited/overridden docs) and falls back to placeholders.
+- **Snippet support (NFR-C3).** 0.26's `ClientCapabilities` keeps only the flags it uses, so
+  `apply_client_capabilities` is prepended to record `completionItem.snippetSupport`. The `initialize` request
+  applies capabilities before add-ons load, so in practice the flag is unknown at activation; the add-on then
+  assumes snippet support and the new `enableSnippets` setting (default on) opts out for clients without it.
+  When the capability is observed as false, plain text is inserted; `enableAuthoring` off leaves the host
+  response untouched.
+- **Comment detection (FR-M4-01).** A version-guarded probe of `RubyDocument`'s Prism parse result exposes the
+  comment list. The context finds the cursor's comment, assembles the contiguous block, finds the definition on
+  the following line (skipping `private`/`protected` modifiers) and classifies the token as tag, directive, type,
+  parameter name or free text. Any failure returns nil and the request falls through to Ruby LSP (NFR-R1/R2).
+- **Type completion (FR-M4-05).** The adapter gained `constant_candidates(prefix, nesting)`, wrapping
+  `RubyIndexer#constant_completion_candidates`; results are rendered as the shortest name that resolves from the
+  definition's nesting. YARD specials and `Array<T>`/`Hash{K => V}`/`Tuple(a, b)`/`Class<T>` snippets sit
+  alongside the index candidates.
+- **Comment hover and definition (FR-M4-P6, FR-M1-14).** Hover shows the class or module declaration and its
+  docstring; definition returns `LocationLink`s to the class. Both pass through unless `enableAuthoring` and the
+  corresponding `enableHover`/`enableDefinition` setting are on.
+- **FR-M4-07.** The README documents that `[` is not a trigger character and that VS Code needs
+  `editor.quickSuggestions.comments` (or Ctrl+Space) for suggestions inside comments.
+- **Testing.** Unit suites cover context detection, tag/type/param completion, type lookup, skeletons, the
+  version allowlist and patch idempotency; LSP integration tests run the patched requests through Ruby LSP's test
+  server, including a pass-through test that compares code completion with authoring on and off (FR-M4-P3) and
+  an exception-fallback test (FR-M4-P4).
+
 ---
 
 ## 10. Milestone M5 — YARD diagnostics

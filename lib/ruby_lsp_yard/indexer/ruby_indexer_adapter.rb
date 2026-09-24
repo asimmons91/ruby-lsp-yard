@@ -71,6 +71,13 @@ module RubyLsp
           log_failure("completion_candidates(#{owner.inspect}, prefix: #{prefix.inspect})", e)
         end
 
+        def constant_candidates(prefix, nesting)
+          entries = @index.constant_completion_candidates(prefix.to_s, Array(nesting))
+          map_entries(entries.flatten, include_comments: false)
+        rescue => e
+          log_failure("constant_candidates(#{prefix.inspect}, #{nesting.inspect})", e)
+        end
+
         private
 
         # RubyIndexer stores singleton methods on a synthetic namespace named `Foo::<Class:Foo>`.

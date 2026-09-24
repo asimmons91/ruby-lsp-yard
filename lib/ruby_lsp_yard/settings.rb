@@ -13,6 +13,7 @@ module RubyLsp
         inlay_hints: "enableInlayHints",
         diagnostics: "enableDiagnostics",
         authoring: "enableAuthoring",
+        snippets: "enableSnippets",
         core_types: "enableCoreTypes"
       }.freeze
 
@@ -24,6 +25,7 @@ module RubyLsp
         "enableInlayHints" => false,
         "enableDiagnostics" => true,
         "enableAuthoring" => true,
+        "enableSnippets" => true,
         "enableCoreTypes" => true,
         "debugInference" => false
       }.freeze

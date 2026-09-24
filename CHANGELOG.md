@@ -1,5 +1,19 @@
 ## [Unreleased]
 
+- M4: complete YARD tags, directives, type names and parameter names inside comments through a version-guarded
+  patch of Ruby LSP's completion request, with snippet placeholders when the client supports them (FR-M4-01..05,
+  D3)
+- M4: base tag suggestions on the definition below the comment — one `@param` per undocumented parameter,
+  `@yield*` only for yielding methods and `@raise` prefilled with the first raised class (FR-M4-03)
+- M4: complete type names inside `[...]` through a new adapter operation that resolves constants relative to the
+  definition's nesting, alongside YARD specials and generic snippets (FR-M4-05)
+- M4: show class documentation on hover and jump to definition for type names inside comments (FR-M1-14,
+  FR-M4-P6)
+- M4: add a code action that inserts a YARD comment skeleton for an undocumented `def`, with types prefilled
+  from inherited documentation (FR-M4-06)
+- M4: disable comment authoring with one warning on Ruby LSP versions outside the tested list, add the
+  `enableSnippets` setting to fall back to plain text, and document the trigger-character and quick-suggestion
+  limits (FR-M4-P2, NFR-C3, FR-M4-07)
 - M3: load RBS core and stdlib signatures in a background thread and convert them into the internal type model
   (overloads, generics, block signatures, optional/keyword parameters, interfaces as duck types); `rbs` is now an
   explicit runtime dependency (FR-M3-01)
