@@ -74,6 +74,24 @@ module RubyLsp
           refute_nil find_item(items, "required_keyword")
         end
 
+        def test_completes_singleton_methods_of_the_class_itself
+          items = complete("FixtureProject::Dog.\n", "FixtureProject::Dog.")
+
+          species = find_item(items, "species")
+
+          refute_nil species
+          assert_equal "String", label_details(species)[:description]
+        end
+
+        def test_completes_singleton_methods_from_extended_modules
+          items = complete("FixtureProject::Inferable.\n", "FixtureProject::Inferable.")
+
+          greet = find_item(items, "greet")
+
+          refute_nil greet
+          assert_equal "String", label_details(greet)[:description]
+        end
+
         def test_completion_labels_partial_union_members
           items = complete("FixtureProject::Inferable.new.pick_any.\n", "pick_any.")
 

@@ -232,6 +232,8 @@ module RubyLsp
           source = <<~RUBY
             module FixtureProject
               class Inferable
+                @count = 0
+
                 def use
                   @count.to_s
                 end
@@ -240,6 +242,50 @@ module RubyLsp
           RUBY
 
           assert_equal Types::Instance.new("Integer"), receiver_type(source, "@count.to_s")
+        end
+
+        def test_does_not_type_ivars_from_plain_reader_methods
+          source = <<~RUBY
+            module FixtureProject
+              class Inferable
+                def use
+                  @label.to_s
+                end
+              end
+            end
+          RUBY
+
+          assert_equal Types::UNKNOWN, receiver_type(source, "@label.to_s")
+        end
+
+        def test_infers_multi_assignment_locals
+          source = <<~RUBY
+            module FixtureProject
+              class Documented
+                def use
+                  doc, animal = FixtureProject::Documented.new, FixtureProject::Animal.new
+                  doc.fetch(:key)
+                end
+              end
+            end
+          RUBY
+
+          assert_equal Types::Instance.new(DOCUMENTED), receiver_type(source, "doc.fetch")
+        end
+
+        def test_parameter_docs_win_over_later_reassignment
+          source = <<~RUBY
+            module FixtureProject
+              class Inferable
+                def echo(other)
+                  other = 42
+                  other.to_s
+                end
+              end
+            end
+          RUBY
+
+          assert_equal Types::Instance.new(INFERABLE), receiver_type(source, "other.to_s")
         end
 
         def test_infers_return_types_of_call_chains

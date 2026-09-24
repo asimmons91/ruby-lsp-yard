@@ -239,11 +239,11 @@ module RubyLsp
           if owner
             attribute = name.delete_prefix("@")
             reader = @store.lookup(owner, attribute)
-            types << reader.return_types if reader && usable?(reader.return_types)
+            types << reader.return_types if reader&.kind == :attribute && usable?(reader.return_types)
 
             writer = @store.lookup(owner, "#{attribute}=")
             writer_types = writer&.params&.first&.types
-            types << writer_types if writer_types && usable?(writer_types)
+            types << writer_types if writer&.kind == :attribute && writer_types && usable?(writer_types)
           end
 
           scope ||= ScopeIndex.new(ctx, log: @log)

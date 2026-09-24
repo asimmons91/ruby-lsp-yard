@@ -154,6 +154,8 @@ module RubyLsp
               table[current.name.to_s] << [current.location.start_offset, current.value]
             when Prism::InstanceVariableAndWriteNode, Prism::InstanceVariableOrWriteNode
               table[current.name.to_s] << [current.location.start_offset, current.value]
+            when Prism::MultiWriteNode
+              record_multi_write(table, current)
             end
 
             current.compact_child_nodes.each do |child|
@@ -167,6 +169,30 @@ module RubyLsp
         rescue => e
           @log&.warn("Scope walk failed: #{e.class}: #{e.message}")
           nil
+        end
+
+        # `a, b = 1, 2` maps each target to its value when the split is unambiguous. Targets after a splat take
+        # from the end, matching multiple assignment. Single RHS values, nested targets and arity mismatches carry
+        # no single value and stay untyped.
+        def record_multi_write(table, node)
+          values = node.value
+          return unless values.is_a?(Prism::ArrayNode)
+
+          targets = node.lefts + node.rights
+          return unless values.elements.size >= targets.size
+
+          pairs = node.lefts.zip(values.elements) + node.rights.reverse.zip(values.elements.reverse)
+          pairs.each do |target, value|
+            name = target_name(target)
+            table[name] << [node.location.start_offset, value] if name
+          end
+        end
+
+        def target_name(target)
+          case target
+          when Prism::LocalVariableTargetNode, Prism::InstanceVariableTargetNode
+            target.name.to_s
+          end
         end
       end
     end
