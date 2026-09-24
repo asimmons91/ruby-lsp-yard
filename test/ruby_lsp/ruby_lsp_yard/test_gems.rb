@@ -101,7 +101,7 @@ module RubyLsp
 
       def test_cache_ignores_corrupt_files
         build_cache.write(["mygem", "1.0.0"], KEY, build_signature)
-        cache_file = Dir[File.join(@root, "1", "*.bin")].first
+        cache_file = Dir[File.join(@root, Gems::Cache::SCHEMA_VERSION.to_s, "*.bin")].first
         File.binwrite(cache_file, "not marshal data")
 
         assert_nil build_cache.read(["mygem", "1.0.0"], KEY)
@@ -139,7 +139,7 @@ module RubyLsp
 
       private
 
-      def build_cache(schema: 1, locator: nil)
+      def build_cache(schema: Gems::Cache::SCHEMA_VERSION, locator: nil)
         Gems::Cache.new(
           root: @root,
           locator: locator || MutableLocator.new("digest"),

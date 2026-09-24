@@ -10,5 +10,6 @@ require_relative "support/adapter_contract"
 require_relative "support/index_helpers"
 require_relative "support/inference_helpers"
 require_relative "support/lsp_helpers"
+require_relative "support/diagnostics_helpers"
 
 require "minitest/autorun"

@@ -33,6 +33,23 @@ module RubyLsp
         assert_instance_of Rbs::Loader, addon.rbs_loader
         assert_instance_of Rbs::Source, addon.rbs_source
         assert_instance_of Gems::Cache, addon.gem_cache
+        assert_instance_of Diagnostics::Linter, addon.diagnostics
+      ensure
+        addon&.deactivate
+      end
+
+      def test_the_linter_is_registered_under_the_yard_identifier
+        addon, global_state = activate_with_linters
+
+        assert_includes global_state.active_linters, addon.diagnostics
+      ensure
+        addon&.deactivate
+      end
+
+      def test_linter_registration_respects_enable_diagnostics
+        addon, global_state = activate_with_linters({enableDiagnostics: false})
+
+        assert_empty global_state.active_linters
       ensure
         addon&.deactivate
       end
@@ -77,6 +94,7 @@ module RubyLsp
         assert_nil addon.rbs_loader
         assert_nil addon.rbs_source
         assert_nil addon.gem_cache
+        assert_nil addon.diagnostics
       end
 
       def test_watched_file_changes_are_forwarded_to_the_adapter
@@ -133,6 +151,18 @@ module RubyLsp
           @addon.activate(global_state, Thread::Queue.new)
         end
         @addon
+      end
+
+      # Activates the add-on with the `yard` linter configured, so `active_linters` can resolve it.
+      def activate_with_linters(settings = {})
+        global_state = RubyLsp::GlobalState.new
+        global_state.apply_options({initializationOptions: {linters: [::RubyLsp::Yard::Addon::LINTER_ID]}})
+
+        global_state.stub(:settings_for_addon, settings) do
+          @addon = ::RubyLsp::Yard::Addon.new
+          @addon.activate(global_state, Thread::Queue.new)
+        end
+        [@addon, global_state]
       end
     end
   end

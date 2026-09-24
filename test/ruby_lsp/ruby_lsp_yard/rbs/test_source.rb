@@ -66,6 +66,15 @@ module RubyLsp
           assert_equal :private, source.lookup("Kernel", "puts").visibility
         end
 
+        def test_marks_signatures_as_rbs_sourced
+          signature = source.lookup("String", "split")
+
+          refute_nil signature
+          assert_equal :rbs, signature.source
+          refute signature.yard?
+          refute signature.overloads.first.yard?
+        end
+
         def test_looks_up_singleton_methods
           signature = source.lookup("String", "new", singleton: true)
 

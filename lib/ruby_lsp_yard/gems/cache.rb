@@ -17,7 +17,9 @@ module RubyLsp
       # state: it is written atomically by the add-on and only read from the user's own cache directory. The
       # payload version and lock digest are validated before any signature is handed out.
       class Cache
-        SCHEMA_VERSION = 1
+        # Bumped when the marshaled `Signature` shape changes (`source` was added in M5), so old payloads are
+        # ignored instead of being read without the new attribute.
+        SCHEMA_VERSION = 2
         PAYLOAD_VERSION = 1
         # Writes are batched: the first signature of a gem is persisted immediately, later ones at most once per
         # threshold or interval, so enriching a completion does not rewrite the payload per method.

@@ -1,5 +1,19 @@
 ## [Unreleased]
 
+- M5: report broken or inconsistent YARD documentation through Ruby LSP's linter registration as the `"yard"`
+  linter, with `YARD/UnknownParam`, `YARD/UnresolvedType`, `YARD/InvalidTypeSyntax`, `YARD/DuplicateTag`,
+  `YARD/InvalidDirective` and `YARD/YieldWithoutBlock` on by default (FR-M5-01, FR-M5-04)
+- M5: scan the live document once — methods, attributes, namespaces and constants with their comment blocks —
+  tracking nesting, visibility and class-level DSL blocks, and never parse prose-only comments (NFR-P5)
+- M5: add the off-by-default `YARD/MissingParam`, `YARD/MissingReturn`, `YARD/ArgumentTypeMismatch` and
+  `YARD/ReturnTypeMismatch` rules, with light type checking restricted to literal arguments and returns against
+  YARD-sourced signatures (`Signature#source`; the gem cache schema version is bumped)
+- M5: configure each rule's severity or turn it off through the `diagnosticRules` add-on setting, and suppress
+  rules per definition with `# yard:disable` (FR-M5-01/02, D10)
+- M5: run diagnostics within a 100 ms budget so the expensive type checks never block the server (FR-M5-04)
+- M5: extend the code-action patch with diagnostics quick fixes — rename an unknown `@param` to the closest
+  parameter, add missing `@param` tags with inherited types when available, and fix unresolved type names
+  (FR-M5-03)
 - M4: complete YARD tags, directives, type names and parameter names inside comments through a version-guarded
   patch of Ruby LSP's completion request, with snippet placeholders when the client supports them (FR-M4-01..05,
   D3)
