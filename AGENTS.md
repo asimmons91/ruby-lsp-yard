@@ -7,7 +7,7 @@ Ruby LSP add-on (working name `ruby-lsp-yard`) that reads YARD `@param`/`@return
 
 ## Commands
 - Setup: `bin/setup` (i.e. `bundle install`)
-- Full check: `bundle exec rake` — runs `test` then `standard`; this is what CI runs (`.github/workflows/main.yml`, Ruby 3.2 and 4.0)
+- Full check: `bundle exec rake` — runs `test` then `standard`; this is what CI runs (`.github/workflows/main.yml`, Ruby 3.4 and 4.0)
 - Tests: `bundle exec rake test`
   - single file: `bundle exec rake test TEST=test/ruby_lsp/ruby_lsp_yard/test_addon.rb`
   - single test: add `TESTOPTS="--name=test_it_has_a_version_number"`
@@ -15,7 +15,7 @@ Ruby LSP add-on (working name `ruby-lsp-yard`) that reads YARD `@param`/`@return
 
 ## Gotchas
 - `sig/ruby_lsp/yard.rbs` is scaffold RBS (single file; path mirrors the module, not `lib`); no typecheck runs in CI.
-- Ruby target is >= 3.2 (gemspec, `.standard.yml`) but CI only exercises 3.2 and 4.0.
+- Ruby target is >= 3.4 (gemspec, `.standard.yml`); CI exercises 3.4 and 4.0.
 - The add-on entrypoint calls `RubyLsp::Addon.depend_on_ruby_lsp!("~> 0.26.0")`; it will not activate against 0.27 (Rubydex) until M6.
 - `ruby-lsp` is a development dependency (Gemfile), not a runtime dependency; add-ons declare compatibility with `depend_on_ruby_lsp!` instead (FR-M0-02).
 - The gemspec builds its file list from `git ls-files`, so new files must be tracked before `rake build`/`install`.

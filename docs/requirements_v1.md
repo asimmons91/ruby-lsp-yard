@@ -382,7 +382,7 @@ The model must be able to represent at least:
 | **D8** | How much inference follows control flow | Assignments only (union) · Narrowing on `nil` checks, `is_a?` and `case`/`when` | Union in M2; narrowing as a later M3 stretch goal |
 | **D9** | Which gems to read and where to cache | All bundled gems · An allowlist · None · Cache in `.ruby-lsp/` vs `~/.cache` | All gems except those excluded in Ruby LSP's indexing config; cache in `~/.cache/<name>` shared across projects |
 | **D10** | Diagnostics defaults and suppression syntax | See the table in §10 | As in the table; `# yard:disable` |
-| **D11** | Minimum Ruby version | 3.1 · 3.2 · 3.3 | Match Ruby LSP's minimum |
+| **D11** ✅ | Minimum Ruby version | **Decided:** 3.4 (3.1–3.3 dropped; diverges from Ruby LSP's own minimum, which is lower) | — |
 | **D12** | Gem name and license | `ruby-lsp-yard` · other | `ruby-lsp-yard`, MIT (check the name is free on RubyGems) |
 | **D13** | Hover layout | Typed signature only · Signature + a table of tags · Replace Ruby LSP's docs section | Typed signature + `@raise`/`@deprecated`/`@overload` |
 | **D14** | Inlay hints | Include in M2 (off by default) · Leave out | Include, off by default, if the API allows (🔍) |
