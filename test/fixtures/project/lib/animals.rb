@@ -46,6 +46,13 @@ module FixtureProject
       real
     end
 
+    protected
+
+    # @return [Symbol]
+    def protected_secret
+      :protected_secret
+    end
+
     private
 
     # @return [Symbol]

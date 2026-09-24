@@ -14,11 +14,20 @@ module IndexHelpers
     project/lib/documented.rb
     project/lib/directives.rb
     project/lib/inheritance.rb
+    project/lib/inference.rb
   ].freeze
 
   def build_fixture_index
     index = RubyIndexer::Index.new
     FIXTURE_FILES.each { |file| index.index_file(fixture_uri(file)) }
+    index
+  end
+
+  # The fixture index plus Ruby core, so names like `String` and `Array` resolve and their methods are available.
+  def build_core_index
+    index = build_fixture_index
+    require "rbs"
+    RubyIndexer::RBSIndexer.new(index).index_ruby_core
     index
   end
 

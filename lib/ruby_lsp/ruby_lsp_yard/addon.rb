@@ -5,7 +5,9 @@ require "ruby_lsp/addon"
 require "uri"
 
 require_relative "../../ruby_lsp_yard/indexer"
-require_relative "../../ruby_lsp_yard/inference/receiver_inferrer"
+require_relative "../../ruby_lsp_yard/inference"
+require_relative "../../ruby_lsp_yard/listeners/completion"
+require_relative "../../ruby_lsp_yard/listeners/definition"
 require_relative "../../ruby_lsp_yard/listeners/hover"
 require_relative "../../ruby_lsp_yard/log"
 require_relative "../../ruby_lsp_yard/settings"
@@ -17,14 +19,20 @@ RubyLsp::Addon.depend_on_ruby_lsp!("~> 0.26.0")
 module RubyLsp
   module Yard
     class Addon < ::RubyLsp::Addon
-      attr_reader :settings, :indexer, :signature_store, :receiver_inferrer, :log
+      attr_reader :settings, :indexer, :signature_store, :inference, :log
 
       def activate(global_state, outgoing_queue)
         @settings = Settings.new(global_state.settings_for_addon(name))
         @log = Log.new(outgoing_queue, level: settings.log_level)
         @indexer = Indexer.for(global_state, log: log)
         @signature_store = SignatureStore.new(@indexer, log: log)
-        @receiver_inferrer = Inference::ReceiverInferrer.new(global_state.type_inferrer)
+        @inference = Inference::Engine.new(
+          adapter: @indexer,
+          store: @signature_store,
+          host: global_state.type_inferrer,
+          log: log,
+          debug: settings.debug_inference?
+        )
         @log.debug("Activated with Ruby LSP #{RubyLsp::VERSION}")
       rescue => e
         add_error(e)
@@ -32,7 +40,7 @@ module RubyLsp
       end
 
       def deactivate
-        @receiver_inferrer = nil
+        @inference = nil
         @signature_store = nil
         @indexer = nil
         @settings = nil
@@ -54,14 +62,43 @@ module RubyLsp
 
       def create_hover_listener(response_builder, node_context, dispatcher)
         return unless settings&.enabled?(:hover)
-        return unless @signature_store && @receiver_inferrer
+        return unless @signature_store && @inference
 
         Listeners::Hover.new(
           response_builder,
           node_context,
           dispatcher,
           store: @signature_store,
-          inferrer: @receiver_inferrer,
+          engine: @inference,
+          log: @log
+        )
+      end
+
+      def create_completion_listener(response_builder, node_context, dispatcher, _uri)
+        return unless settings&.enabled?(:completion)
+        return unless @indexer && @signature_store && @inference
+
+        Listeners::Completion.new(
+          response_builder,
+          node_context,
+          dispatcher,
+          adapter: @indexer,
+          store: @signature_store,
+          inference: @inference,
+          log: @log
+        )
+      end
+
+      def create_definition_listener(response_builder, _uri, node_context, dispatcher)
+        return unless settings&.enabled?(:definition)
+        return unless @indexer && @inference
+
+        Listeners::Definition.new(
+          response_builder,
+          node_context,
+          dispatcher,
+          adapter: @indexer,
+          inference: @inference,
           log: @log
         )
       end

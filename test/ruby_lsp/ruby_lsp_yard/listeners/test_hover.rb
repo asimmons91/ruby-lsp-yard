@@ -66,6 +66,23 @@ module RubyLsp
           assert_includes value, "def find(key: Symbol, default: String) → String"
         end
 
+        def test_hover_shows_types_for_yard_typed_receivers
+          source = <<~RUBY
+            module FixtureProject
+              class Documented
+                def label_of(item)
+                  item.label
+                end
+              end
+            end
+          RUBY
+
+          value = hover_on(source, ".label")
+
+          refute_nil value
+          assert_includes value, "def label() → String"
+        end
+
         def test_hover_does_not_emit_without_yard_types
           source = "FixtureProject::Animal.new.class\n"
 

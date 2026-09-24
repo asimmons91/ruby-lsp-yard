@@ -15,6 +15,7 @@ module RubyLsp
           assert_raises(NotImplementedError) { adapter.resolve_constant("Foo", []) }
           assert_raises(NotImplementedError) { adapter.ancestors("Foo") }
           assert_raises(NotImplementedError) { adapter.methods_of("Foo") }
+          assert_raises(NotImplementedError) { adapter.completion_candidates("Foo") }
         end
 
         def test_on_change_dispatches_to_subscribers

@@ -9,13 +9,15 @@ module RubyLsp
       attr_reader settings: Settings?
       attr_reader indexer: Indexer::Adapter?
       attr_reader signature_store: SignatureStore?
-      attr_reader receiver_inferrer: Inference::ReceiverInferrer?
+      attr_reader inference: Inference::Engine?
       attr_reader log: Log?
 
       def activate: (untyped global_state, untyped outgoing_queue) -> void
       def deactivate: () -> void
       def workspace_did_change_watched_files: (untyped changes) -> void
       def create_hover_listener: (untyped response_builder, untyped node_context, untyped dispatcher) -> void
+      def create_completion_listener: (untyped response_builder, untyped node_context, untyped dispatcher, untyped uri) -> void
+      def create_definition_listener: (untyped response_builder, untyped uri, untyped node_context, untyped dispatcher) -> void
       def name: () -> String
       def version: () -> String
     end
@@ -67,6 +69,8 @@ module RubyLsp
       def typed?: () -> bool
       def renderable?: () -> bool
       def signature_line: () -> String
+      def parameter_list: () -> String
+      def return_type_string: () -> String?
       def to_markdown: () -> String
     end
 
@@ -98,9 +102,56 @@ module RubyLsp
     end
 
     module Inference
-      class ReceiverInferrer
-        def initialize: (untyped type_inferrer) -> void
+      class Budget
+        class Exceeded < StandardError
+        end
+
+        def initialize: (?timeout_ms: Integer, ?max_depth: Integer, ?check_interval: Integer, ?clock: untyped) -> void
+        def check!: (Integer depth) -> void
+        def visit: (untyped key) -> bool
+      end
+
+      class Resolution
+        class Member
+          attr_reader owner: String
+          attr_reader singleton: bool
+          attr_reader label: String
+        end
+
+        attr_reader members: Array[Member]
+        attr_reader duck_methods: Array[String]
+        attr_reader source: Symbol
+
+        def yard?: () -> bool
+        def empty?: () -> bool
+        def primary: () -> Member?
+      end
+
+      class ScopeIndex
+        def initialize: (untyped node_context, ?log: Log?) -> void
+        def available?: () -> bool
+        def local_scope: untyped
+        def class_scope: untyped
+        def assignment_value_nodes: (String name, Integer before_offset) -> Array[untyped]
+        def ivar_value_nodes: (String name) -> Array[untyped]
+        def block_parameters: () -> Array[[String, Symbol]]
+      end
+
+      class Engine
+        def initialize: (adapter: Indexer::Adapter, store: SignatureStore, ?host: untyped, ?log: Log?, ?budget_ms: Integer, ?debug: bool) -> void
         def owner_for: (untyped node_context) -> [String, bool]?
+        def resolution_for: (untyped node_context) -> Resolution?
+        def type_for: (untyped node, untyped node_context, ?budget: Budget?) -> untyped
+      end
+    end
+
+    module Listeners
+      class Completion
+        def initialize: (untyped response_builder, untyped node_context, untyped dispatcher, adapter: Indexer::Adapter, store: SignatureStore, inference: Inference::Engine, ?log: Log?) -> void
+      end
+
+      class Definition
+        def initialize: (untyped response_builder, untyped node_context, untyped dispatcher, adapter: Indexer::Adapter, inference: Inference::Engine, ?log: Log?) -> void
       end
     end
 
@@ -113,6 +164,7 @@ module RubyLsp
         def initialize: (?log: Log?) -> void
         def subscribe: () { (untyped) -> void } -> untyped
         def on_change: (untyped uris) -> void
+        def completion_candidates: (String owner, ?prefix: String?, ?singleton: bool) -> Array[Definition]
       end
     end
   end

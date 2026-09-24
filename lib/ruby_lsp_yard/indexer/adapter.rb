@@ -58,7 +58,14 @@ module RubyLsp
         end
 
         # Returns the methods available on `owner`, optionally filtered by `prefix`, as `Definition` structs.
+        # Implementations may read comments here, since callers use them for directive discovery.
         def methods_of(owner, prefix: nil, singleton: false)
+          raise NotImplementedError
+        end
+
+        # Like {#methods_of}, but for completion candidate display. Implementations must not read comments: the
+        # candidate set can be large and reading comments re-parses the owning file for every entry.
+        def completion_candidates(owner, prefix: nil, singleton: false)
           raise NotImplementedError
         end
       end

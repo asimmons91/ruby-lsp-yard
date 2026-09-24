@@ -67,6 +67,17 @@ module FixtureProject
       self
     end
 
+    # @return [String]
+    def label
+      "documented"
+    end
+
+    # @param item [Inferable] whose label to read
+    # @return [String]
+    def label_of(item)
+      item.label
+    end
+
     # Iterates values.
     #
     # @yield [value] each value

@@ -94,7 +94,21 @@ module RubyLsp
 
       # The one-line signature shown on hover, e.g. `def fetch(key: Symbol, default: String?) → String`.
       def signature_line
-        "#{definition_prefix}(#{@params.map { |param| display_param(param) }.join(", ")})#{return_suffix}"
+        "#{definition_prefix}#{parameter_list}#{return_suffix}"
+      end
+
+      # The parameter list with types, for completion label details (FR-M2-14). Overloads without an outer
+      # parameter list fall back to the first overload's parameters.
+      def parameter_list
+        params = @params.empty? ? (@overloads.first&.params || []) : @params
+        "(#{params.map { |param| display_param(param) }.join(", ")})"
+      end
+
+      # The formatted return type, or nil when the signature does not carry a usable one.
+      def return_type_string
+        return nil if Types.unknown?(@return_types)
+
+        Types::Formatter.format(@return_types)
       end
 
       def to_markdown

@@ -8,5 +8,7 @@ require "ruby_lsp/ruby_lsp_yard/addon"
 
 require_relative "support/adapter_contract"
 require_relative "support/index_helpers"
+require_relative "support/inference_helpers"
+require_relative "support/lsp_helpers"
 
 require "minitest/autorun"

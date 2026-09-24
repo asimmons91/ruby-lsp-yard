@@ -64,6 +64,13 @@ module RubyLsp
           log_failure("methods_of(#{owner.inspect}, prefix: #{prefix.inspect})", e)
         end
 
+        def completion_candidates(owner, prefix: nil, singleton: false)
+          entries = @index.method_completion_candidates(prefix, receiver_name(owner, singleton: singleton))
+          map_entries(entries, include_comments: false)
+        rescue => e
+          log_failure("completion_candidates(#{owner.inspect}, prefix: #{prefix.inspect})", e)
+        end
+
         private
 
         # RubyIndexer stores singleton methods on a synthetic namespace named `Foo::<Class:Foo>`.
@@ -74,11 +81,11 @@ module RubyLsp
           "#{owner}::<Class:#{unqualified_name}>"
         end
 
-        def map_entries(entries)
-          Array(entries).map { |entry| definition_for(entry) }
+        def map_entries(entries, include_comments: true)
+          Array(entries).map { |entry| definition_for(entry, include_comments: include_comments) }
         end
 
-        def definition_for(entry)
+        def definition_for(entry, include_comments: true)
           Definition.new(
             name: entry.name,
             owner: entry.respond_to?(:owner) ? entry.owner&.name : nil,
@@ -86,7 +93,9 @@ module RubyLsp
             visibility: entry.visibility,
             uri: entry.uri,
             location: location_for(entry),
-            comments: entry.comments,
+            full_location: full_location_for(entry),
+            file_name: entry.file_name,
+            comments: include_comments ? entry.comments : nil,
             parameters: parameters_for(entry)
           )
         end
@@ -144,7 +153,15 @@ module RubyLsp
         end
 
         def location_for(entry)
-          location = entry.name_location
+          convert_location(entry.name_location)
+        end
+
+        def full_location_for(entry)
+          convert_location(entry.location)
+        end
+
+        def convert_location(location)
+          return nil unless location
 
           Location.new(
             start_line: location.start_line,
