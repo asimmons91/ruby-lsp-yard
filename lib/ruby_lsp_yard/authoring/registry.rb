@@ -17,6 +17,27 @@ module RubyLsp
             current&.signature_store
           end
 
+          def diagnostics
+            current&.diagnostics
+          end
+
+          # FR-M5-03: quick fixes need both the diagnostics linter and the code-action patch, so they respect
+          # `enableDiagnostics` alongside `enableAuthoring`.
+          def diagnostics?
+            !!diagnostics && !!current&.settings&.enabled?(:diagnostics)
+          end
+
+          def fixes
+            return nil unless diagnostics?
+
+            Diagnostics::Fixes.new(
+              linter: diagnostics,
+              adapter: adapter,
+              store: store,
+              log: log
+            )
+          end
+
           def log
             current&.log
           end

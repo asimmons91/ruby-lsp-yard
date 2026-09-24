@@ -94,7 +94,8 @@ module RubyLsp
             yield_returns: yield_returns,
             type_params: definition.type_params.map { |param| param.name.to_sym },
             method_type_params: method_type_params(primary),
-            documented: true
+            documented: true,
+            source: :rbs
           )
         end
 
@@ -107,7 +108,8 @@ module RubyLsp
             yield_params: yield_params,
             yield_returns: yield_returns,
             method_type_params: method_type_params(method_type),
-            documented: true
+            documented: true,
+            source: :rbs
           )
         end
 

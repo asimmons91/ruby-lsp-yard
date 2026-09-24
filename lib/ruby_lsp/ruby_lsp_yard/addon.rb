@@ -5,6 +5,7 @@ require "ruby_lsp/addon"
 require "uri"
 
 require_relative "../../ruby_lsp_yard/authoring"
+require_relative "../../ruby_lsp_yard/diagnostics"
 require_relative "../../ruby_lsp_yard/gems"
 require_relative "../../ruby_lsp_yard/indexer"
 require_relative "../../ruby_lsp_yard/inference"
@@ -22,7 +23,12 @@ RubyLsp::Addon.depend_on_ruby_lsp!("~> 0.26.0")
 module RubyLsp
   module Yard
     class Addon < ::RubyLsp::Addon
-      attr_reader :settings, :indexer, :signature_store, :inference, :log, :rbs_loader, :rbs_source, :gem_cache
+      # The identifier users list in `rubyLsp.linters` to activate the diagnostics linter (FR-M5-01). Ruby LSP
+      # 0.26 only runs linters the user configures, so add-on linters are never auto-detected.
+      LINTER_ID = "yard"
+
+      attr_reader :settings, :indexer, :signature_store, :inference, :log, :rbs_loader, :rbs_source, :gem_cache,
+        :diagnostics
 
       def activate(global_state, outgoing_queue)
         @settings = Settings.new(global_state.settings_for_addon(name))
@@ -39,6 +45,14 @@ module RubyLsp
           log: log,
           debug: settings.debug_inference?
         )
+        @diagnostics = Diagnostics::Linter.new(
+          adapter: @indexer,
+          store: @signature_store,
+          inference: @inference,
+          settings: @settings,
+          log: @log
+        )
+        register_linter(global_state)
         @client_capabilities = global_state.client_capabilities
         install_authoring
         @log.debug("Activated with Ruby LSP #{RubyLsp::VERSION}")
@@ -50,6 +64,8 @@ module RubyLsp
       def deactivate
         Authoring::Registry.current = nil if Authoring::Registry.current.equal?(self)
         @client_capabilities = nil
+        @diagnostics&.deactivate!
+        @diagnostics = nil
         @gem_cache&.flush
         @rbs_loader&.cancel
         @rbs_loader = nil
@@ -133,6 +149,16 @@ module RubyLsp
         loader = Rbs::Loader.new(log: @log)
         loader.start
         loader
+      end
+
+      # FR-M5-01: register the diagnostics linter under {LINTER_ID}. Ruby LSP 0.26 only runs linters the user lists
+      # in `rubyLsp.linters`, so the identifier must be documented (add-on linters are not auto-detected).
+      def register_linter(global_state)
+        return unless settings.enabled?(:diagnostics)
+
+        global_state.register_formatter(LINTER_ID, @diagnostics)
+      rescue => e
+        @log&.error("Failed to register the diagnostics linter: #{e.class}: #{e.message}")
       end
 
       # FR-M4-P2: the comment patch only runs on explicitly tested Ruby LSP versions. Every other version disables

@@ -20,7 +20,8 @@ module RubyLsp
       attr_accessor :owner, :name, :singleton, :kind, :visibility, :uri, :location,
         :summary, :params, :return_types, :overloads, :raises, :deprecated,
         :metadata, :yields, :yield_params, :yield_returns, :unmatched_params,
-        :reference, :signature_text, :documented, :options, :type_params, :method_type_params
+        :reference, :signature_text, :documented, :options, :type_params, :method_type_params,
+        :source
 
       def initialize(
         owner: nil,
@@ -46,7 +47,8 @@ module RubyLsp
         documented: true,
         options: [],
         type_params: [],
-        method_type_params: []
+        method_type_params: [],
+        source: :yard
       )
         @owner = owner
         @name = name
@@ -72,6 +74,14 @@ module RubyLsp
         @options = options
         @type_params = type_params
         @method_type_params = method_type_params
+        @source = source
+      end
+
+      # Whether this signature was built from YARD tags (as opposed to RBS). The literal type-mismatch diagnostics
+      # only run against YARD-sourced signatures, because RBS signatures are often generic or structural and would
+      # produce false positives (FR-M5-03).
+      def yard?
+        @source == :yard
       end
 
       def deprecated?

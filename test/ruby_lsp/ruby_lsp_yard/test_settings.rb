@@ -50,6 +50,45 @@ module RubyLsp
         refute Settings.new({"enableHover" => "false"}).enabled?(:hover)
         assert Settings.new({enableHover: "true"}).enabled?(:hover)
       end
+
+      def test_rule_severities_default_to_nil
+        assert_nil Settings.new(nil).rule_severity("YARD/UnknownParam")
+      end
+
+      def test_rule_severities_are_read_from_diagnostic_rules
+        settings = Settings.new({
+          diagnosticRules: {
+            "YARD/MissingParam" => "warning",
+            :"YARD/MissingReturn" => "error"
+          }
+        })
+
+        assert_equal :warning, settings.rule_severity("YARD/MissingParam")
+        assert_equal :error, settings.rule_severity("YARD/MissingReturn")
+        assert_nil settings.rule_severity("YARD/UnknownParam")
+      end
+
+      def test_rules_can_be_disabled
+        settings = Settings.new({
+          "diagnosticRules" => {
+            "YARD/UnknownParam" => false,
+            "YARD/MissingParam" => "off",
+            "YARD/MissingReturn" => "NONE"
+          }
+        })
+
+        assert_equal :off, settings.rule_severity("YARD/UnknownParam")
+        assert_equal :off, settings.rule_severity("YARD/MissingParam")
+        assert_equal :off, settings.rule_severity("YARD/MissingReturn")
+      end
+
+      def test_invalid_rule_values_fall_back_to_defaults
+        assert_nil Settings.new({diagnosticRules: "bogus"}).rule_severity("YARD/UnknownParam")
+        assert_nil Settings.new({diagnosticRules: {"YARD/UnknownParam" => "loud"}})
+          .rule_severity("YARD/UnknownParam")
+        assert_equal :hint, Settings.new({diagnosticRules: {"YARD/UnknownParam" => "Hint"}})
+          .rule_severity("YARD/UnknownParam")
+      end
     end
   end
 end

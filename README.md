@@ -7,17 +7,24 @@ carry thorough YARD documentation.
 ## Status
 
 **M0 (foundation), M1 (YARD parsing, signature store, hover), M2 (inference, completion, definition), M3
-(core/stdlib types, generics, gem caching) and M4 (YARD authoring) are complete.** The add-on reads YARD `@param`
-and `@return` tags through the `yard` gem's docstring parser and infers receiver types from literals, constants,
-`self`, method parameters, local and instance variable assignments, `Foo.new`, call chains, unions, duck types
-and blocks. Core and stdlib signatures come from RBS, generic type variables are substituted at the call site,
-and YARD comments in dependency gems are cached on disk. Inside comments, completion helps write tags, types and
-parameters, hover and go to definition work on type names, and a code action inserts a comment skeleton.
-Diagnostics and the Ruby 0.27 backend land in M5–M7; see
+(core/stdlib types, generics, gem caching), M4 (YARD authoring) and M5 (YARD diagnostics) are complete.** The
+add-on reads YARD `@param` and `@return` tags through the `yard` gem's docstring parser and infers receiver types
+from literals, constants, `self`, method parameters, local and instance variable assignments, `Foo.new`, call
+chains, unions, duck types and blocks. Core and stdlib signatures come from RBS, generic type variables are
+substituted at the call site, and YARD comments in dependency gems are cached on disk. Inside comments,
+completion helps write tags, types and parameters, hover and go to definition work on type names, and a code
+action inserts a comment skeleton. Diagnostics report broken or inconsistent YARD documentation with configurable
+severities and quick fixes. The Ruby 0.27 backend and advanced directives land in M6–M7; see
 [`docs/requirements_v1.md`](docs/requirements_v1.md) for the full plan.
 
 Known gaps:
 
+- Diagnostics are not auto-detected by Ruby LSP (add-on linters are not). Users must list `"yard"` in
+  `rubyLsp.linters`; without it the add-on activates but no diagnostics run.
+- Quick fixes and the comment skeleton rely on the version-guarded code-action patch, so they require
+  `enableAuthoring` as well as `enableDiagnostics`.
+- `YARD/MissingParam`, `YARD/MissingReturn`, `YARD/ArgumentTypeMismatch` and `YARD/ReturnTypeMismatch` are off by
+  default (the light type checks are conservative and opt-in).
 - Signature help has no add-on hook in Ruby LSP 0.26 (`Requests::SignatureHelp` ignores add-ons), so the
   `enableSignatureHelp` setting is reserved until an upstream hook exists or a later milestone patches it.
 - Inlay hints have no add-on hook either (`Requests::InlayHints` ignores add-ons), so `enableInlayHints` is
@@ -78,8 +85,9 @@ Settings live under `rubyLsp.addonSettings`, keyed by the add-on name. For VS Co
 | `enableSignatureHelp` | `true` | Reserved: no add-on hook in Ruby LSP 0.26 (see Status) |
 | `enableDefinition` | `true` | Go to definition from YARD types |
 | `enableInlayHints` | `false` | Reserved: no add-on hook in Ruby LSP 0.26 (see Status) |
-| `enableDiagnostics` | `true` | YARD diagnostics (M5) |
-| `enableAuthoring` | `true` | YARD comment completion and skeletons (M4) |
+| `enableDiagnostics` | `true` | YARD diagnostics (M5); also requires `"yard"` in `rubyLsp.linters` |
+| `diagnosticRules` | `{}` | Per-rule severities (`"error"`, `"warning"`, `"info"`, `"hint"`) or `false`/`"off"` to disable a rule |
+| `enableAuthoring` | `true` | YARD comment completion and skeletons (M4), and diagnostics quick fixes |
 | `enableSnippets` | `true` | Snippet placeholders in comment completion (`false` inserts plain text) |
 | `enableCoreTypes` | `true` | RBS core/stdlib signatures and generics |
 | `logLevel` | `"info"` | One of `debug`, `info`, `warn`, `error` |
@@ -88,6 +96,65 @@ Settings live under `rubyLsp.addonSettings`, keyed by the add-on name. For VS Co
 Feature toggles are read during activation; invalid values fall back to the defaults, and no configuration is
 required at all. Comment completion and skeletons require `enableAuthoring`; comment hover additionally requires
 `enableHover` and comment definition `enableDefinition`.
+
+## Diagnostics
+
+Ruby LSP 0.26 runs add-on linters only when the user lists them, so diagnostics need one extra setting:
+
+```json
+{
+  "rubyLsp.linters": ["rubocop", "yard"],
+  "rubyLsp.addonSettings": {
+    "Ruby LSP YARD": {
+      "enableDiagnostics": true,
+      "diagnosticRules": {
+        "YARD/MissingParam": "warning",
+        "YARD/ArgumentTypeMismatch": false
+      }
+    }
+  }
+}
+```
+
+| Rule | Default | Description |
+|---|---|---|
+| `YARD/UnknownParam` | warning | A `@param` names a parameter the method doesn't have |
+| `YARD/UnresolvedType` | warning | A type name doesn't resolve to a known constant |
+| `YARD/InvalidTypeSyntax` | error | A type expression can't be parsed |
+| `YARD/DuplicateTag` | warning | A `@param` or `@return` appears twice (outside an `@overload`) |
+| `YARD/InvalidDirective` | error | A directive is malformed, or its `@!parse` text has a Ruby syntax error |
+| `YARD/YieldWithoutBlock` | info | `@yield*` on a method that neither yields nor takes a block |
+| `YARD/MissingParam` | off | A parameter has no `@param` tag (reported only on documented methods) |
+| `YARD/MissingReturn` | off | A public method has no `@return` |
+| `YARD/ArgumentTypeMismatch` | off | A literal argument's type conflicts with the `@param` type |
+| `YARD/ReturnTypeMismatch` | off | A literal return value conflicts with `@return` |
+
+The two mismatch rules only check literals against signatures built from YARD tags, so RBS-backed core and
+stdlib methods are never reported; `Object`, `self`, `void`, duck types and type variables are treated as
+unknown. Rules with a default of "off" run as soon as `diagnosticRules` gives them a severity.
+
+Suppress rules per definition by adding `# yard:disable` to its comment block:
+
+```ruby
+# @param name [String]
+# yard:disable YARD/UnresolvedType
+def greet(name)
+  ...
+end
+```
+
+With no rule names the directive suppresses every rule for that definition; a file-level form does not exist.
+Suppression applies to diagnostics attached to that definition, so it does not silence the mismatch rules for
+call sites elsewhere.
+
+Diagnostics are pulled by the editor on open and save, and after changes while the document is within Ruby
+LSP's expensive-feature limit. The add-on enforces its own budget (100 ms per document): the syntax and
+documentation rules always run, while the expensive type-mismatch rules are skipped once the budget is used up.
+
+Where the API allows, diagnostics come with quick fixes (through the same version-guarded code-action patch as
+authoring): rename an `@param` to the closest parameter, add a missing `@param` tag (types are prefilled from
+inherited documentation when available), or replace an unresolved type name with the closest indexed constant.
+Quick fixes require both `enableDiagnostics` and `enableAuthoring`.
 
 ## Hover
 

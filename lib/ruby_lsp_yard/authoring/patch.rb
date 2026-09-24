@@ -18,6 +18,8 @@ module RubyLsp
       #   RubyLsp::Requests::CodeActions#perform              (lib/ruby_lsp/requests/code_actions.rb)
       #   RubyLsp::ClientCapabilities#apply_client_capabilities (lib/ruby_lsp/client_capabilities.rb)
       #
+      # M5 extends the `CodeActions` patch with diagnostics quick fixes (FR-M5-03).
+      #
       # The patch is only applied to the versions listed in {TESTED_VERSIONS} (FR-M4-P2). Any exception inside a
       # patched method falls back to the original behavior (FR-M4-P4, NFR-R2).
       module Patch
@@ -168,16 +170,30 @@ module RubyLsp
         end
 
         # FR-M4-06: no add-on hook exists for code actions, so the skeleton action is appended to the host response.
+        # FR-M5-03 adds the diagnostics quick fixes through the same patch.
         module CodeActionsPatch
           def perform
             actions = super
             return actions unless Registry.authoring?
 
             action = yard_skeleton_action
-            action ? actions + [action] : actions
+            actions += [action] if action
+            actions + yard_quick_fix_actions
           end
 
           private
+
+          # FR-M5-03: recompute the fixable diagnostics for this document and turn the ones in the requested range
+          # into quick-fix actions.
+          def yard_quick_fix_actions
+            fixes = Registry.fixes
+            return [] unless fixes
+
+            fixes.actions_for(document: @document, uri: @document.uri, range: @range)
+          rescue => e
+            Registry.log&.error("Quick fix actions failed: #{e.class}: #{e.message}")
+            []
+          end
 
           def yard_skeleton_action
             return nil unless @document.respond_to?(:language_id) && @document.language_id == :ruby

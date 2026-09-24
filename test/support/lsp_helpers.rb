@@ -94,6 +94,18 @@ module LspHelpers
     Array(pop_result(server).response).select { |item| item.is_a?(RubyLsp::Interface::CodeAction) }
   end
 
+  # Pull diagnostics for `uri` and return the LSP Diagnostic items from the full report.
+  def diagnostic_items(server, uri)
+    server.process_message({
+      id: 1,
+      method: "textDocument/diagnostic",
+      params: {textDocument: {uri: uri}}
+    })
+
+    report = pop_result(server).response
+    report.respond_to?(:items) ? report.items : []
+  end
+
   def override_addon_settings(settings)
     addon = RubyLsp::Addon.addons.find { |candidate| candidate.name == "Ruby LSP YARD" }
     addon.define_singleton_method(:settings) { RubyLsp::Yard::Settings.new(settings) }

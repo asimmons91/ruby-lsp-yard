@@ -43,6 +43,12 @@ module RubyLsp
         assert_equal "String", typed.return_type_string
         assert_nil unknown.return_type_string
       end
+
+      def test_signatures_default_to_yard_source
+        assert Signature.new(name: :a).yard?
+        assert_equal :yard, Signature.new(name: :a).source
+        refute Signature.new(name: :a, source: :rbs).yard?
+      end
     end
   end
 end

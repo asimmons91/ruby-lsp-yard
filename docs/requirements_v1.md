@@ -176,7 +176,7 @@ consulting add-ons.
 | Inlay hints | ❌ | No add-on hook; `Requests::InlayHints` ignores add-ons | Descoped (D14 default); revisit if a hook appears |
 | Code actions | ❌ | No add-on hook; `Requests::CodeActions` ignores add-ons | Upstream owner: ruby-lsp code-action hook (FR-M4-06 skeleton, FR-M5-03 quick fixes) |
 | Code lens | ✅ | `Addon#create_code_lens_listener`, invoked by `Requests::CodeLens` | M4 fallback for comment skeleton generation (FR-M4-06) |
-| Diagnostics / linter registration | ⚠️ | `GlobalState#register_formatter(identifier, instance)` supports `run_diagnostic`, but the linter only activates when the user lists the identifier in `rubyLsp.linters`; add-on linters are not auto-detected | M5 (FR-M5-01) with a documented `rubyLsp.linters` requirement. Upstream owner for auto-detection |
+| Diagnostics / linter registration | ⚠️ | `GlobalState#register_formatter(identifier, instance)` supports `run_diagnostic`, but the linter only activates when the user lists the identifier in `rubyLsp.linters`; add-on linters are not auto-detected | M5 (FR-M5-01) implemented: the add-on registers `"yard"` and the README documents the `rubyLsp.linters` requirement. Upstream owner for auto-detection |
 | On-type formatting | ❌ | No add-on hook | Descope: not needed by V1 |
 | Settings | ✅ | `GlobalState#settings_for_addon(name)` reads `addonSettings` keyed by the add-on's name | M0 (FR-M0-06) |
 | File watching | ✅ | `Addon#workspace_did_change_watched_files(changes)`; the server registers `**/*.rb` watchers for add-ons that respond to it | M0 (`Indexer::Adapter#on_change`) |
@@ -481,6 +481,57 @@ registration. Every gap above has a disposition; upstream rows become issues aga
 - **FR-M5-03:** Quick fixes where the API allows: rename a `@param` to the closest matching parameter, add the missing `@param` tags, fix the spelling of a type name.
 - **FR-M5-04:** Diagnostics run on save and on open. On change only if it stays within the budget.
 
+### 10.1 M5 implementation notes (2026-09-24)
+
+- **Registration (FR-M5-01).** The add-on registers `Diagnostics::Linter` under the identifier `"yard"` with
+  `GlobalState#register_formatter` during `activate`, and only when `enableDiagnostics` is on. Ruby LSP 0.26's
+  `Requests::Diagnostics` resolves `active_linters` from `initializationOptions[:linters]`, so the identifier must
+  be listed by the user (`"rubyLsp.linters": ["yard"]`) and is documented in the README. Auto-detection remains an
+  upstream request (§5.1).
+- **Scanning (FR-M5-01..04).** `Diagnostics::Scanner` walks the live document AST once (not the index) and pairs
+  methods, `attr_*` calls, namespaces and constants with the contiguous comment block immediately above them,
+  tracking class nesting, `class << self`, `private`/`protected`/`public`/`module_function`,
+  `private :name`/`private def` forms and class-level DSL blocks. Only comment blocks containing `@` are parsed, so
+  prose-only comments cost nothing (NFR-P5).
+- **Rules.** `YARD/InvalidTypeSyntax`, `YARD/UnresolvedType`, `YARD/UnknownParam`, `YARD/DuplicateTag`,
+  `YARD/InvalidDirective` and `YARD/YieldWithoutBlock` run by default. Unknown and malformed directives are found
+  by scanning the comment text, because YARD silently drops them; every YARD directive (`group`, `endgroup`,
+  `scope`, ...) is recognized, along with Solargraph's `domain` for M7. `YARD/UnresolvedType` skips single-capital
+  type variables (`Array<T>`) and underscore-prefixed RBS interface names, and `YARD/UnknownParam` accepts the
+  names inside destructured parameters (`def m((a, b))`). `YARD/MissingParam`, `YARD/MissingReturn`,
+  `YARD/ReturnTypeMismatch` and `YARD/ArgumentTypeMismatch` default to off; all four only consider methods that
+  already carry some YARD documentation.
+- **Light type checking (D10).** The two mismatch rules compare literal nodes against signatures built from YARD
+  tags only: `Signature#source` was added (`:yard`/`:rbs`; the gem cache schema version was bumped so old payloads
+  are ignored) and RBS-sourced signatures are skipped, which avoids false positives from RBS generics and
+  overloads. `*rest` arguments are compared against the container's element type (a bare `Array` carries no
+  element information and is skipped), and keywords that fall into `**options` are checked against the matching
+  `@option` tag when there is one. `nil` return literals are ignored, and union, duck, `self`, `void` and type
+  variables never conflict. `YARD/ArgumentTypeMismatch` resolves call receivers through the inference engine, so
+  it is a document-wide rule; `YARD/ReturnTypeMismatch` walks explicit `return` literals of each documented
+  method.
+- **Suppression and severities (FR-M5-01/02, D10).** Severities come from the `diagnosticRules` map in the
+  add-on settings (`false`, `"off"` and `"none"` disable a rule; invalid values fall back to the default).
+  `# yard:disable Rule[, Rule...]` anywhere in a definition's comment block suppresses those rules for that
+  definition; a bare `# yard:disable` suppresses every rule for it. There is no file-level form.
+- **Budgets and caching (FR-M5-04).** The linter runs cheap rules first behind a 100 ms deadline; once exhausted,
+  the remaining (expensive) rules are skipped and the findings so far are returned. Ruby LSP caches the
+  diagnostic response per document version and clears it on edits, so open, save and change pulls cannot serve a
+  stale report.
+- **Quick fixes (FR-M5-03).** Ruby LSP 0.26 still has no add-on code-action hook, so the M4 version-guarded
+  `Requests::CodeActions` patch was extended under the same rules (FR-M4-P2..P5): it recomputes the fixable
+  diagnostics for the document and appends quick fixes intersecting the requested range. It can rename an
+  unknown `@param` to the closest parameter, add a missing `@param` (types prefilled from inherited
+  documentation when available), and replace an unresolved type name with the closest indexed constant. Quick
+  fixes require `enableDiagnostics` and `enableAuthoring`.
+- **Never raises (NFR-R1/R2).** Unexpected failures in the scan, a rule or a fix return an empty result and are
+  logged; a failing rule does not affect the other rules, and the committed corpus is exercised by a no-raise
+  test. `Diagnostics::Linter#deactivate!` makes a stale registered linter inert after the add-on is released.
+- **Testing.** Unit suites cover the scanner, suppression, budget, type walker, every rule, the linter's error
+  isolation and the fix builders; `test_linter_lsp.rb` pulls diagnostics through the real test server (including
+  require-listing, suppression and recompute-after-edit), and `test_patch_lsp`/`test_linter_lsp` cover the quick
+  fixes through `textDocument/codeAction`.
+
 ---
 
 ## 11. Milestone M6 — Rubydex backend (Ruby LSP 0.27)
@@ -527,7 +578,7 @@ registration. Every gap above has a disposition; upstream rows become issues aga
 | **D7** | Completion when the receiver type is unknown; handling `nil` and `Object` | Show nothing · Leave it to Ruby LSP's default behavior · Guess from method names | Leave it to Ruby LSP; leave `nil` out of unions; treat `Object` as unknown |
 | **D8** | How much inference follows control flow | Assignments only (union) · Narrowing on `nil` checks, `is_a?` and `case`/`when` | Union in M2; narrowing as a later M3 stretch goal |
 | **D9** ✅ | Which gems to read and where to cache | All bundled gems · An allowlist · None · Cache in `.ruby-lsp/` vs `~/.cache` | **Decided:** every gem the host indexes (Ruby LSP's exclusions apply by construction); cache in `~/.cache/ruby-lsp-yard/<schema>/` shared across projects, keyed by gem name/version, invalidated by a `Gemfile.lock` digest (§8.1) |
-| **D10** | Diagnostics defaults and suppression syntax | See the table in §10 | As in the table; `# yard:disable` |
+| **D10** ✅ | Diagnostics defaults and suppression syntax | See the table in §10 | **Decided:** severities as in the §10 table (four rules default to off); `# yard:disable Rule[, Rule...]` in a definition's comment block, bare `# yard:disable` for all rules, per definition only (§10.1) |
 | **D11** ✅ | Minimum Ruby version | **Decided:** 3.4 (3.1–3.3 dropped; diverges from Ruby LSP's own minimum, which is lower) | — |
 | **D12** | Gem name and license | `ruby-lsp-yard` · other | `ruby-lsp-yard`, MIT (check the name is free on RubyGems) |
 | **D13** | Hover layout | Typed signature only · Signature + a table of tags · Replace Ruby LSP's docs section | Typed signature + `@raise`/`@deprecated`/`@overload` |

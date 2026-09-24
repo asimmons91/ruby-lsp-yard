@@ -33,6 +33,10 @@ module RubyLsp
       DEFAULT_LOG_LEVEL = :info
       LOG_LEVELS = %i[debug info warn error].freeze
 
+      # FR-M5-01: rule severities accepted in the `diagnosticRules` map. `off`/`none` mean the same as `false`.
+      RULE_SEVERITIES = %w[error warning info hint].freeze
+      RULE_DISABLED = %w[off none].freeze
+
       def initialize(raw)
         @raw = raw.is_a?(Hash) ? raw : {}
         @values = BOOLEAN_DEFAULTS.dup
@@ -61,7 +65,29 @@ module RubyLsp
         @values.fetch("debugInference")
       end
 
+      # FR-M5-01: the configured severity for a diagnostic rule, or nil to use the rule's built-in default.
+      # `false`, `"off"` and `"none"` turn the rule off. Unknown values fall back to the default (nil) rather than
+      # raising (NFR-R1).
+      def rule_severity(rule)
+        value = diagnostic_rules[rule.to_s]
+        return nil if value.nil?
+        return :off if value == false
+
+        normalized = value.to_s.downcase
+        return :off if RULE_DISABLED.include?(normalized)
+        return normalized.to_sym if RULE_SEVERITIES.include?(normalized)
+
+        nil
+      end
+
       private
+
+      def diagnostic_rules
+        raw = fetch("diagnosticRules")
+        return {} unless raw.is_a?(Hash)
+
+        raw.to_h { |key, value| [key.to_s, value] }
+      end
 
       def fetch(key)
         return @raw[key.to_sym] if @raw.key?(key.to_sym)
