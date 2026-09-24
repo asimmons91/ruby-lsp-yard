@@ -1,9 +1,12 @@
 # frozen_string_literal: true
 
 require_relative "support"
+require "ruby_lsp_yard/rbs"
 
 adapter = RubyLsp::Yard::Indexer::RubyIndexerAdapter.new(BenchmarkSupport.index)
-store = RubyLsp::Yard::SignatureStore.new(adapter)
+loader = RubyLsp::Yard::Rbs::Loader.new(background: false)
+loader.start
+store = RubyLsp::Yard::SignatureStore.new(adapter, rbs: RubyLsp::Yard::Rbs::Source.new(loader))
 engine = RubyLsp::Yard::Inference::Engine.new(adapter: adapter, store: store)
 
 source = <<~RUBY
@@ -34,4 +37,14 @@ end
 
 BenchmarkSupport.measure("resolution with union/duck") do
   engine.resolution_for(BenchmarkSupport.context_for("FixtureProject::Inferable.new.pick_any.\n", "pick_any."))
+end
+
+core_context = BenchmarkSupport.context_for("[1, 2].first\n", "first")
+BenchmarkSupport.measure("generic core return") do
+  engine.type_for(core_context.node, core_context)
+end
+
+block_context = BenchmarkSupport.context_for("\"a,b\".split(\",\").map(&:strip)\n", "map(&:strip)")
+BenchmarkSupport.measure("block return inference") do
+  engine.type_for(block_context.node, block_context)
 end

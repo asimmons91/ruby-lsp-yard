@@ -19,11 +19,15 @@ module RubyLsp
           def core_index
             @core_index ||= Object.new.extend(IndexHelpers).build_core_index
           end
+
+          def rbs_source
+            @rbs_source ||= IndexHelpers.rbs_source
+          end
         end
 
         def setup
           @adapter = Indexer::RubyIndexerAdapter.new(index)
-          @store = SignatureStore.new(@adapter)
+          @store = SignatureStore.new(@adapter, rbs: self.class.rbs_source)
           @engine = Engine.new(adapter: @adapter, store: @store)
         end
 
@@ -52,7 +56,9 @@ module RubyLsp
           assert_equal "Array", array.name
           assert_equal [Types.union([Types::Instance.new("Integer"), Types::Instance.new("String")])], array.type_args
 
-          assert_equal Types::Instance.new("Hash"), type_of("{a: 1}")
+          hash = type_of("{a: 1}")
+          assert_equal "Hash", hash.name
+          assert_equal [Types::Instance.new("Symbol"), Types::Instance.new("Integer")], hash.type_args
         end
 
         def test_infers_singletons_and_instances
@@ -391,6 +397,57 @@ module RubyLsp
 
         def test_never_raises_from_malformed_input
           assert_equal Types::UNKNOWN, @engine.type_for(nil, nil)
+        end
+
+        # --- M3: core/stdlib types and generics ---------------------------------------------------------------------
+
+        def test_infers_core_types_through_rbs
+          assert_equal Types::Instance.new("Integer"), type_of("[1, 2].first")
+          assert_equal Types::Instance.new("String"), type_of('["a", "b"].first')
+          assert_equal Types::Instance.new("Array", [Types::Instance.new("String")]), type_of('"a,b".split(",")')
+          assert_equal Types::Instance.new("Integer"), type_of('"a,b".split(",").size')
+        end
+
+        def test_substitutes_class_type_variables_for_chains
+          assert_equal(
+            Types::Instance.new("Array", [Types::Instance.new("Symbol")]),
+            type_of("{a: 1}.keys")
+          )
+        end
+
+        def test_types_block_parameters_from_rbs_block_signatures
+          hash = "def work\n  {a: 1}.each { |k, v| v }\nend\n"
+          assert_equal Types::Instance.new("Integer"), type_at(hash, "| v")
+
+          array = "def work\n  [\"a\", \"b\"].each { |s| s }\nend\n"
+          assert_equal Types::Instance.new("String"), type_at(array, "| s")
+        end
+
+        def test_types_block_parameters_from_rbs_yield_params_by_name
+          source = "def work\n  {a: 1}.each { |pair| pair }\nend\n"
+
+          assert_equal(
+            Types::Tuple.new([Types::Instance.new("Symbol"), Types::Instance.new("Integer")]),
+            type_at(source, "pair", occurrence: 1)
+          )
+        end
+
+        def test_infers_block_return_types_for_map
+          assert_equal(
+            Types::Instance.new("Array", [Types::Instance.new("String")]),
+            type_of('["a"].map { |s| s.upcase }')
+          )
+          assert_equal(
+            Types::Instance.new("Array", [Types::Instance.new("String")]),
+            type_of('["a"].map(&:upcase)')
+          )
+        end
+
+        def test_infers_the_m3_acceptance_chain
+          assert_equal(
+            Types::Instance.new("Array", [Types::Instance.new("String")]),
+            type_of('"a,b".split(",").map(&:strip)')
+          )
         end
 
         private

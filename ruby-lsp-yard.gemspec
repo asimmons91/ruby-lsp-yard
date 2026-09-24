@@ -42,6 +42,10 @@ Gem::Specification.new do |spec|
   # else: no Registry, no yardoc, no HTML generation.
   spec.add_dependency "yard", "~> 0.9"
 
+  # RBS core/stdlib signatures for M3 (FR-M3-01). Ruby LSP already depends on `rbs`; depending on it explicitly
+  # keeps the add-on working if that changes.
+  spec.add_dependency "rbs", ">= 3", "< 5"
+
   # For more information and examples about making a new gem, check out our
   # guide at: https://guides.rubygems.org/make-your-own-gem/
 end

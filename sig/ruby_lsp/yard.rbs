@@ -11,6 +11,9 @@ module RubyLsp
       attr_reader signature_store: SignatureStore?
       attr_reader inference: Inference::Engine?
       attr_reader log: Log?
+      attr_reader rbs_loader: Rbs::Loader?
+      attr_reader rbs_source: Rbs::Source?
+      attr_reader gem_cache: Gems::Cache?
 
       def activate: (untyped global_state, untyped outgoing_queue) -> void
       def deactivate: () -> void
@@ -41,7 +44,7 @@ module RubyLsp
     end
 
     class SignatureStore
-      def initialize: (Indexer::Adapter adapter, ?log: Log?) -> void
+      def initialize: (Indexer::Adapter adapter, ?log: Log?, ?rbs: Rbs::Source?, ?gem_cache: Gems::Cache?) -> void
       def lookup: (String? owner, (String | Symbol)? name, ?singleton: bool) -> Signature?
       def invalidate: (untyped uris) -> void
     end
@@ -71,6 +74,7 @@ module RubyLsp
       def signature_line: () -> String
       def parameter_list: () -> String
       def return_type_string: () -> String?
+      def with_type_bindings: (Hash[Symbol, untyped] bindings) -> Signature
       def to_markdown: () -> String
     end
 
@@ -96,8 +100,55 @@ module RubyLsp
         def parse_list: (Array[String] type_strings) -> untyped
       end
 
+      class TypeVar
+        attr_accessor name: Symbol
+      end
+
+      def self.substitute_type_vars: (untyped type, Hash[Symbol, untyped] mapping) -> untyped
+
       module Formatter
         def self.format: (untyped type) -> String
+      end
+    end
+
+    module Rbs
+      class Loader
+        def initialize: (?log: Log?, ?background: bool) -> void
+        def start: () -> void
+        def cancel: () -> void
+        def ready?: () -> bool
+        def subscribe: () { () -> void } -> Proc
+        def load: () -> void
+      end
+
+      class Converter
+        def initialize: (?environment: untyped, ?builder: untyped) -> void
+        def convert: (untyped type, ?depth: Integer) -> untyped
+      end
+
+      class Source
+        def initialize: (Loader loader, ?log: Log?) -> void
+        def ready?: () -> bool
+        def subscribe: () { () -> void } -> Proc
+        def lookup: (untyped owner, untyped name, ?singleton: bool) -> Signature?
+      end
+    end
+
+    module Gems
+      class Locator
+        def initialize: (?specs: untyped, ?lockfile: String?) -> void
+        def identity: (untyped uri_or_path) -> [String, String]?
+        def lock_digest: () -> String?
+      end
+
+      class Cache
+        SCHEMA_VERSION: Integer
+        def initialize: (?root: String?, ?locator: Locator?, ?schema: Integer, ?log: Log?) -> void
+        def identity: (untyped uri_or_path) -> [String, String]?
+        def read: (untyped gem, untyped key) -> Signature?
+        def write: (untyped gem, untyped key, Signature? signature) -> void
+        def flush: () -> void
+        def invalidate: () -> void
       end
     end
 
@@ -116,6 +167,7 @@ module RubyLsp
           attr_reader owner: String
           attr_reader singleton: bool
           attr_reader label: String
+          attr_reader type_args: Array[untyped]
         end
 
         attr_reader members: Array[Member]
@@ -135,11 +187,13 @@ module RubyLsp
         def assignment_value_nodes: (String name, Integer before_offset) -> Array[untyped]
         def ivar_value_nodes: (String name) -> Array[untyped]
         def block_parameters: () -> Array[[String, Symbol]]
+        def self.block_parameters_for: (untyped block) -> Array[[String, Symbol]]
       end
 
       class Engine
         def initialize: (adapter: Indexer::Adapter, store: SignatureStore, ?host: untyped, ?log: Log?, ?budget_ms: Integer, ?debug: bool) -> void
         def owner_for: (untyped node_context) -> [String, bool]?
+        def signature_for: (untyped node_context) -> Signature?
         def resolution_for: (untyped node_context) -> Resolution?
         def type_for: (untyped node, untyped node_context, ?budget: Budget?) -> untyped
       end

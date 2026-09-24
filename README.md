@@ -6,11 +6,13 @@ carry thorough YARD documentation.
 
 ## Status
 
-**M0 (foundation), M1 (YARD parsing, signature store, hover) and M2 (inference, completion, definition) are
-complete.** The add-on reads YARD `@param` and `@return` tags through the `yard` gem's docstring parser and infers
-receiver types from literals, constants, `self`, method parameters, local and instance variable assignments,
-`Foo.new`, call chains, unions, duck types and blocks. Signature help and the remaining features land in M3–M7;
-see [`docs/requirements_v1.md`](docs/requirements_v1.md) for the full plan.
+**M0 (foundation), M1 (YARD parsing, signature store, hover), M2 (inference, completion, definition) and M3
+(core/stdlib types, generics, gem caching) are complete.** The add-on reads YARD `@param` and `@return` tags
+through the `yard` gem's docstring parser and infers receiver types from literals, constants, `self`, method
+parameters, local and instance variable assignments, `Foo.new`, call chains, unions, duck types and blocks. Core
+and stdlib signatures come from RBS, generic type variables are substituted at the call site, and YARD comments
+in dependency gems are cached on disk. Authoring, diagnostics and the Ruby 0.27 backend land in M4–M7; see
+[`docs/requirements_v1.md`](docs/requirements_v1.md) for the full plan.
 
 Known gaps:
 
@@ -23,6 +25,9 @@ Known gaps:
   excludes `def` nodes, so definitions are not enriched.
 - Solargraph-style inline `# @type [Foo]` annotations are deferred to M7 (D6), and the per-file Sorbet policy in
   D5 cannot be applied because the completion and definition hooks do not receive the file's Sorbet level.
+- `rbs collection` gem signatures (FR-M3-07) are deferred to M7; the RBS bridge covers core and stdlib only.
+- RBS intersections are approximated as unions and records as hashes, and rbs gem signatures are not navigable
+  targets (go to definition for core methods still points at the `rbs` gem's `.rbs` files through Ruby LSP).
 
 ## Requirements
 
@@ -30,6 +35,8 @@ Known gaps:
 - Ruby LSP 0.26.x (`0.27`/Rubydex support is planned, see milestone M6)
 - `yard` >= 0.9 (`~> 0.9`) is installed as a runtime dependency for docstring parsing only; the Registry,
   `yardoc` and HTML generation are never used
+- `rbs` >= 3, < 5 is installed as a runtime dependency for core/stdlib signatures; the RBS environment is built
+  in a background thread and never blocks requests
 
 ## Installation
 
@@ -69,6 +76,7 @@ Settings live under `rubyLsp.addonSettings`, keyed by the add-on name. For VS Co
 | `enableInlayHints` | `false` | Reserved: no add-on hook in Ruby LSP 0.26 (see Status) |
 | `enableDiagnostics` | `true` | YARD diagnostics (M5) |
 | `enableAuthoring` | `true` | YARD comment completion and skeletons (M4) |
+| `enableCoreTypes` | `true` | RBS core/stdlib signatures and generics |
 | `logLevel` | `"info"` | One of `debug`, `info`, `warn`, `error` |
 | `debugInference` | `false` | Logs how inference reached each result |
 
@@ -100,6 +108,29 @@ attribute docs or class assignments, `Foo.new` (respecting a documented `self.ne
 budget or 8 chained calls and degrades to Ruby LSP's own behavior rather than guessing; `nil` is dropped from
 unions and `Object` is treated as unknown (D7).
 
+## Core and stdlib types
+
+Core and stdlib signatures come from RBS (FR-M3-01). The environment (core plus every stdlib library shipped by
+the `rbs` gem) is built in a background thread at activation, so the server keeps answering requests while it
+loads; until it is ready, inference falls back to YARD and Ruby LSP. Where RBS and YARD both describe a method,
+RBS wins (D5) — for example when a project reopens a core class with YARD docs.
+
+Generics are substituted at the call site (FR-M3-02): `[1, 2].first` is `Integer`, `"a,b".split(",")` is
+`Array<String>`, and `"a,b".split(",").map(&:strip)` is `Array<String>` (FR-M3-03 infers the block's return
+type; both block bodies and `&:symbol` blocks are supported). `hash.each { |k, v| }` types both destructured
+block parameters from the `Hash[K, V]#each` block signature. RBS interfaces such as `_ToS` become duck types,
+and RBS aliases are expanded with a depth cap.
+
+## Dependency gems
+
+YARD comments in bundled gems are read lazily, the first time a method in them is resolved, and the built
+signatures are persisted to a disk cache at `~/.cache/ruby-lsp-yard/<schema>/<gem>-<version>.bin` (FR-M3-05,
+D9). The cache is shared across projects, keyed by gem name and version, and a change to `Gemfile.lock`
+invalidates it. Writes are batched (the first signature for a gem is written immediately, later ones at most
+every 32 writes or 2 seconds, plus on shutdown), and caching is independent of the `enableCoreTypes` setting.
+Gems excluded from Ruby LSP's own indexing never reach the store, so they are excluded here too (FR-M3-06).
+Loading `rbs collection` signatures (FR-M3-07) is deferred to M7.
+
 ## Completion
 
 After `recv.`, completion offers the methods of the inferred type. Items carry the typed parameter list and
@@ -124,7 +155,7 @@ bin/setup                                  # bundle install
 bundle exec rake                           # tests + standard (what CI runs)
 bundle exec rake test                      # tests only
 bundle exec rake corpus                    # parse the YARD comments of installed top gems (NFR-T3)
-bundle exec rake benchmark                 # inference and completion latency (NFR-P2/P3)
+bundle exec rake benchmark                 # inference, completion and RBS latency (NFR-P2/P3)
 BUNDLE_GEMFILE=gemfiles/ruby_lsp_0.26.gemfile bundle exec rake   # a specific ruby-lsp version
 ```
 
@@ -132,6 +163,8 @@ BUNDLE_GEMFILE=gemfiles/ruby_lsp_0.26.gemfile bundle exec rake   # a specific ru
   supported Ruby LSP minor. CI runs the matrix in `.github/workflows/main.yml`.
 - All indexer access goes through `RubyLsp::Yard::Indexer::Adapter`. Backends are validated by the shared
   contract in `test/support/adapter_contract.rb`, which the Rubydex backend will reuse in M6.
+- `lib/ruby_lsp_yard/rbs/` loads RBS core/stdlib signatures in the background and converts them to the internal
+  type model; `lib/ruby_lsp_yard/gems/` locates gem files and caches their parsed signatures.
 - Fixture projects live in `test/fixtures/`.
 - `rake corpus` scans the gems in `test/corpus/gems.txt` that are installed, reports the type expression failure
   rate and fails above `CORPUS_MAX_FAILURE_RATE` (default 1%). A scheduled GitHub workflow installs the list and

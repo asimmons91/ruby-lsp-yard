@@ -20,7 +20,7 @@ module RubyLsp
       attr_accessor :owner, :name, :singleton, :kind, :visibility, :uri, :location,
         :summary, :params, :return_types, :overloads, :raises, :deprecated,
         :metadata, :yields, :yield_params, :yield_returns, :unmatched_params,
-        :reference, :signature_text, :documented, :options
+        :reference, :signature_text, :documented, :options, :type_params, :method_type_params
 
       def initialize(
         owner: nil,
@@ -44,7 +44,9 @@ module RubyLsp
         reference: nil,
         signature_text: nil,
         documented: true,
-        options: []
+        options: [],
+        type_params: [],
+        method_type_params: []
       )
         @owner = owner
         @name = name
@@ -68,6 +70,8 @@ module RubyLsp
         @signature_text = signature_text
         @documented = documented
         @options = options
+        @type_params = type_params
+        @method_type_params = method_type_params
       end
 
       def deprecated?
@@ -95,6 +99,20 @@ module RubyLsp
       # The one-line signature shown on hover, e.g. `def fetch(key: Symbol, default: String?) → String`.
       def signature_line
         "#{definition_prefix}#{parameter_list}#{return_suffix}"
+      end
+
+      # Returns a copy with RBS class type variables bound to the receiver's generic arguments (FR-M3-02), so
+      # completion labels and hover show `Array<String>#first → String` instead of `→ E`.
+      def with_type_bindings(bindings)
+        return self if bindings.nil? || bindings.empty?
+
+        bound = dup
+        bound.params = @params.map { |param| substitute_param(param, bindings) }
+        bound.return_types = Types.substitute_type_vars(@return_types, bindings)
+        bound.yield_params = @yield_params.map { |param| substitute_param(param, bindings) }
+        bound.yield_returns = @yield_returns.map { |type| Types.substitute_type_vars(type, bindings) }
+        bound.overloads = @overloads.map { |overload| overload.with_type_bindings(bindings) }
+        bound
       end
 
       # The parameter list with types, for completion label details (FR-M2-14). Overloads without an outer
@@ -152,6 +170,12 @@ module RubyLsp
       end
 
       private
+
+      def substitute_param(param, bindings)
+        copy = param.dup
+        copy.types = Types.substitute_type_vars(param.types, bindings)
+        copy
+      end
 
       def definition_prefix
         @singleton ? "def self.#{@name}" : "def #{@name}"

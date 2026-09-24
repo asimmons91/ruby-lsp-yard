@@ -44,6 +44,10 @@ module RubyLsp
       Duck = Struct.new(:methods)
       Literal = Struct.new(:value)
 
+      # An RBS method or class type parameter such as `Array[E]#first`'s `E` (FR-M3-02). Substituted with the
+      # receiver's type arguments at the call site; unbound variables stay visible in labels.
+      TypeVar = Struct.new(:name)
+
       # A class name that could not be resolved relative to the documented definition (FR-M1-08). Not an error.
       Ref = Struct.new(:name)
 
@@ -100,6 +104,33 @@ module RubyLsp
             Tuple.new(type.types.map { |member| substitute_self(member, replacement) })
           when HashOf
             HashOf.new(substitute_self(type.key, replacement), substitute_self(type.value, replacement))
+          else
+            type
+          end
+        end
+
+        # Replaces RBS type variables with the types bound at the call site (FR-M3-02). Missing bindings are left
+        # as {TypeVar}s so signature labels can still display them.
+        def substitute_type_vars(type, mapping)
+          return type if mapping.nil? || mapping.empty?
+
+          case type
+          when TypeVar
+            mapping.fetch(type.name, type)
+          when Union
+            union(type.types.map { |member| substitute_type_vars(member, mapping) })
+          when Instance
+            return type if type.type_args.empty?
+
+            Instance.new(type.name, type.type_args.map { |argument| substitute_type_vars(argument, mapping) })
+          when Singleton
+            return type if type.type_args.empty?
+
+            Singleton.new(type.name, type.type_args.map { |argument| substitute_type_vars(argument, mapping) })
+          when Tuple
+            Tuple.new(type.types.map { |member| substitute_type_vars(member, mapping) })
+          when HashOf
+            HashOf.new(substitute_type_vars(type.key, mapping), substitute_type_vars(type.value, mapping))
           else
             type
           end

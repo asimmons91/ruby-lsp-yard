@@ -1,6 +1,8 @@
 # frozen_string_literal: true
 
 require "test_helper"
+require "tmpdir"
+require "ruby_lsp_yard/gems"
 require "ruby_lsp_yard/signature_store"
 
 module RubyLsp
@@ -26,6 +28,10 @@ module RubyLsp
             RubyIndexer::RBSIndexer.new(index).index_ruby_core
             index
           end
+        end
+
+        def rbs_source
+          @rbs_source ||= IndexHelpers.rbs_source
         end
       end
 
@@ -269,6 +275,122 @@ module RubyLsp
         adapter.define_singleton_method(:method_definitions) { |*| raise "boom" }
 
         assert_nil store.lookup(ANIMAL, "speak")
+      end
+
+      # --- M3: RBS integration and gem caching --------------------------------------------------------------------
+
+      def test_rbs_is_preferred_for_core_owners
+        store = rbs_store
+
+        signature = store.lookup("String", "split")
+
+        refute_nil signature
+        assert_equal Types::Instance.new("Array", [Types::Instance.new("String")]), signature.return_types
+        assert_equal [:pattern, :limit], signature.params.map(&:name)
+        assert_equal [:E], store.lookup("Array", "first").type_params
+      end
+
+      def test_rbs_answers_for_core_ancestors_of_workspace_owners
+        signature = rbs_store.lookup(ANIMAL, "to_s")
+
+        refute_nil signature
+        assert_equal Types::Instance.new("String"), signature.return_types
+      end
+
+      def test_yard_still_wins_for_workspace_owners
+        signature = rbs_store.lookup(ANIMAL, "speak")
+
+        refute_nil signature
+        assert_equal ANIMAL, signature.owner
+        assert_equal Types::Instance.new("String"), signature.return_types
+      end
+
+      def test_rbs_signatures_replace_fallbacks_once_the_environment_is_ready
+        source = FakeRbsSource.new
+        store = SignatureStore.new(Indexer::RubyIndexerAdapter.new(index), rbs: source)
+
+        before = store.lookup("String", "split")
+
+        refute_nil before
+        assert Types.unknown?(before.return_types)
+
+        source.become_ready
+        after = store.lookup("String", "split")
+
+        refute_same before, after
+        assert_equal Types::Instance.new("Array", [Types::Instance.new("String")]), after.return_types
+      end
+
+      def test_gem_backed_signatures_are_persisted_to_the_disk_cache
+        root = Dir.mktmpdir("ruby-lsp-yard-store")
+        locator = FixtureGemLocator.new(IndexHelpers::FIXTURES_PATH)
+        store = SignatureStore.new(Indexer::RubyIndexerAdapter.new(index), gem_cache: Gems::Cache.new(root: root, locator: locator))
+
+        refute_nil store.lookup(ANIMAL, "speak")
+
+        cached = Gems::Cache.new(root: root, locator: locator).read(["fixturegem", "1.0.0"], [ANIMAL, "speak", false])
+
+        refute_nil cached
+        assert_equal Types::Instance.new("String"), cached.return_types
+        assert_equal [Types::Instance.new("String")], cached.params.map(&:types)
+      ensure
+        FileUtils.remove_entry(root) if root && File.directory?(root)
+      end
+
+      private
+
+      def rbs_store
+        SignatureStore.new(Indexer::RubyIndexerAdapter.new(index), rbs: self.class.rbs_source)
+      end
+
+      # A deferrable RBS source so tests can fill the store before the environment is ready.
+      class FakeRbsSource
+        def initialize
+          @ready = false
+          @subscribers = []
+        end
+
+        def subscribe(&block)
+          @subscribers << block
+          block.call if @ready
+          block
+        end
+
+        def ready?
+          @ready
+        end
+
+        def lookup(owner, name, singleton: false)
+          return nil unless @ready && owner == "String" && name == "split"
+
+          Signature.new(
+            owner: "String",
+            name: "split",
+            return_types: Types::Instance.new("Array", [Types::Instance.new("String")]),
+            documented: true
+          )
+        end
+
+        def become_ready
+          @ready = true
+          @subscribers.each(&:call)
+        end
+      end
+
+      # Claims the whole fixture directory belongs to one gem so the store's disk cache path is exercised.
+      class FixtureGemLocator
+        def initialize(root)
+          @root = root
+        end
+
+        def identity(uri_or_path)
+          path = uri_or_path.respond_to?(:path) ? uri_or_path.path : uri_or_path.to_s
+          path.start_with?(@root) ? ["fixturegem", "1.0.0"] : nil
+        end
+
+        def lock_digest
+          nil
+        end
       end
     end
   end

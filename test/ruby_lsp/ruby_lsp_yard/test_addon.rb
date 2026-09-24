@@ -30,6 +30,20 @@ module RubyLsp
         assert_instance_of SignatureStore, addon.signature_store
         assert_instance_of Inference::Engine, addon.inference
         refute_nil addon.log
+        assert_instance_of Rbs::Loader, addon.rbs_loader
+        assert_instance_of Rbs::Source, addon.rbs_source
+        assert_instance_of Gems::Cache, addon.gem_cache
+      ensure
+        addon&.deactivate
+      end
+
+      def test_core_types_can_be_disabled
+        addon = activate_addon(enableCoreTypes: false)
+
+        assert_nil addon.rbs_loader
+        assert_nil addon.rbs_source
+      ensure
+        addon&.deactivate
       end
 
       def test_activation_reads_addon_settings
@@ -49,6 +63,9 @@ module RubyLsp
         assert_nil addon.inference
         assert_nil addon.settings
         assert_nil addon.log
+        assert_nil addon.rbs_loader
+        assert_nil addon.rbs_source
+        assert_nil addon.gem_cache
       end
 
       def test_watched_file_changes_are_forwarded_to_the_adapter
@@ -93,14 +110,18 @@ module RubyLsp
 
       private
 
+      def teardown
+        @addon&.deactivate
+      end
+
       def activate_addon(settings = {})
         global_state = RubyLsp::GlobalState.new
 
         global_state.stub(:settings_for_addon, settings) do
-          addon = ::RubyLsp::Yard::Addon.new
-          addon.activate(global_state, Thread::Queue.new)
-          addon
+          @addon = ::RubyLsp::Yard::Addon.new
+          @addon.activate(global_state, Thread::Queue.new)
         end
+        @addon
       end
     end
   end

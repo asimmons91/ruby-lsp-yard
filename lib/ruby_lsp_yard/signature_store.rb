@@ -16,9 +16,11 @@ module RubyLsp
       MISS = Object.new
       REFERENCE = /\A(?:(?<owner>[A-Za-z_][\w:]*))?(?<separator>[#.])(?<method>[^#.]+)\z/
 
-      def initialize(adapter, log: nil)
+      def initialize(adapter, log: nil, rbs: nil, gem_cache: nil)
         @adapter = adapter
         @log = log
+        @rbs = rbs
+        @gem_cache = gem_cache
         @extractor = Documentation::TagExtractor.new(log: log)
         @cache = {}
         @directive_cache = {}
@@ -27,6 +29,9 @@ module RubyLsp
         @mutex = Mutex.new
 
         adapter.subscribe { |uris| invalidate(uris) }
+        # Core signatures looked up while the RBS environment was still loading were pinned to their YARD/host
+        # fallback; drop the caches once RBS can answer (FR-M3-04).
+        @rbs&.subscribe { invalidate(nil) }
       end
 
       def lookup(owner, name, singleton: false)
@@ -63,6 +68,10 @@ module RubyLsp
 
         visited += [key]
 
+        # FR-M3-04 (D5): where RBS and YARD both describe a method, RBS wins.
+        rbs_signature = rbs_lookup(owner, name, singleton)
+        return rbs_signature if rbs_signature
+
         # Populates visibility overrides stored on the owner's own definitions.
         directives = directive_entries(owner)
         fallback = nil
@@ -83,6 +92,11 @@ module RubyLsp
 
         ancestors.each do |ancestor|
           next if ancestor == receiver
+
+          # Ancestors contribute their instance methods to both kinds of receivers (`extend` mixes a module's
+          # instance methods into the singleton), so the singleton flag is not passed on.
+          inherited_rbs = rbs_lookup(ancestor, name, false)
+          return inherited_rbs if inherited_rbs
 
           @adapter.method_definitions(ancestor, name).each do |definition|
             signature = signature_from_definition(definition, name, singleton, visited)
@@ -106,6 +120,14 @@ module RubyLsp
       end
 
       def signature_from_definition(definition, name, singleton, visited)
+        gem = gem_identity(definition)
+        cache_key = gem_cache_key(definition, singleton)
+
+        if gem && cache_key
+          cached = @gem_cache&.read(gem, cache_key)
+          return cached if cached
+        end
+
         raw = @extractor.extract(definition.comments)
 
         if raw.reference
@@ -113,9 +135,34 @@ module RubyLsp
           return resolved if resolved
         end
 
-        build_signature(definition, raw, name: name, singleton: singleton)
+        signature = build_signature(definition, raw, name: name, singleton: singleton)
+        @gem_cache&.write(gem, cache_key, signature) if gem && cache_key && signature&.documented?
+        signature
       rescue => e
         @log&.error("Failed to build signature for #{definition.name}: #{e.class}: #{e.message}")
+        nil
+      end
+
+      # FR-M3-05: gem docstrings are parsed lazily and the built signatures persist to the disk cache.
+      def gem_identity(definition)
+        return nil unless @gem_cache
+
+        @gem_cache.identity(definition.uri || definition.file_name)
+      rescue
+        nil
+      end
+
+      def gem_cache_key(definition, singleton)
+        return nil unless definition.owner && definition.name
+
+        [definition.owner, definition.name, singleton_for(definition) || singleton]
+      end
+
+      # FR-M3-04: RBS answers for core and stdlib owners (and their ancestors) before YARD.
+      def rbs_lookup(owner, name, singleton)
+        @rbs&.lookup(owner, name, singleton: singleton)
+      rescue => e
+        @log&.error("RBS signature lookup failed for #{owner}##{name}: #{e.class}: #{e.message}")
         nil
       end
 

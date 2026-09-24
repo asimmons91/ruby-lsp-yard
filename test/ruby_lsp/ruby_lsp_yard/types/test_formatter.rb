@@ -25,6 +25,11 @@ module RubyLsp
             render(Union.new([Instance.new("String"), Instance.new("Integer"), NIL_TYPE]))
         end
 
+        def test_formats_type_variables
+          assert_equal "E", render(TypeVar.new(:E))
+          assert_equal "Array<E>", render(Instance.new("Array", [TypeVar.new(:E)]))
+        end
+
         def test_formats_specials_and_literals
           assert_equal "Boolean", render(BOOLEAN)
           assert_equal "self", render(SELF)

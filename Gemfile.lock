@@ -2,6 +2,7 @@ PATH
   remote: .
   specs:
     ruby-lsp-yard (0.3.0)
+      rbs (>= 3, < 5)
       yard (~> 0.9)
 
 GEM

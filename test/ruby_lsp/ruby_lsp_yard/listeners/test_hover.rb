@@ -8,6 +8,7 @@ module RubyLsp
       class TestHover < Minitest::Test
         include RubyLsp::TestHelper
         include IndexHelpers
+        include LspHelpers
 
         def test_hover_shows_types_for_foo_new_receivers
           source = "FixtureProject::Documented.new.fetch(:key)\n"
@@ -81,6 +82,37 @@ module RubyLsp
 
           refute_nil value
           assert_includes value, "def label() → String"
+        end
+
+        def test_hover_shows_substituted_core_generics
+          source = "[1, 2].first\n"
+          value = nil
+
+          with_server(source) do |server, uri|
+            index_fixtures(server)
+            index_core(server)
+            wait_for_rbs(server)
+            value = request_hover(server, uri, source, "first")
+          end
+
+          refute_nil value
+          assert_includes value, "def first() → Integer"
+          assert_includes value, "def first(count: Integer | #to_int) → Array<Integer>"
+        end
+
+        def test_hover_shows_core_signatures_for_string_receivers
+          source = '"text".upcase\n'
+          value = nil
+
+          with_server(source) do |server, uri|
+            index_fixtures(server)
+            index_core(server)
+            wait_for_rbs(server)
+            value = request_hover(server, uri, source, "upcase")
+          end
+
+          refute_nil value
+          assert_includes value, "def upcase() → String"
         end
 
         def test_hover_does_not_emit_without_yard_types

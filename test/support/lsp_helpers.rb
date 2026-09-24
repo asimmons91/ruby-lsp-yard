@@ -7,6 +7,22 @@ module LspHelpers
     IndexHelpers::FIXTURE_FILES.each { |file| server.global_state.index.index_file(fixture_uri(file)) }
   end
 
+  # Adds the RBS-derived core entries to the server's index, like a real Ruby LSP session does during `index_all`.
+  def index_core(server)
+    require "rbs"
+    RubyIndexer::RBSIndexer.new(server.global_state.index).index_ruby_core
+  end
+
+  # The add-on loads its RBS environment in the background (NFR-P1); tests that assert core types wait for it.
+  def wait_for_rbs(server)
+    addon = RubyLsp::Addon.addons.find { |candidate| candidate.name == "Ruby LSP YARD" }
+    loader = addon&.rbs_loader
+    return unless loader
+
+    deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + 15
+    sleep(0.01) until loader.ready? || Process.clock_gettime(Process::CLOCK_MONOTONIC) > deadline
+  end
+
   # Completion position is the end of `position_token`, or the end of the line when not given. This matches an
   # editor that has just typed the last character of the line.
   def completion_items(server, uri, source, line_token:, position_token: nil, trigger: ".")
