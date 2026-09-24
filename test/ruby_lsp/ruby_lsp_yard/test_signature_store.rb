@@ -104,6 +104,14 @@ module RubyLsp
         assert_equal "FixtureProject::BaseService", signature.owner
       end
 
+      def test_unresolved_see_references_fall_back_to_ancestors
+        signature = @store.lookup("FixtureProject::BrokenReferenceService", "process")
+
+        refute_nil signature
+        assert_equal "FixtureProject::BaseService", signature.owner
+        assert_equal Types::Instance.new("Integer"), signature.return_types
+      end
+
       def test_returns_self_special
         assert_equal Types::SELF, @store.lookup(DOCUMENTED, "chain").return_types
       end
@@ -132,6 +140,12 @@ module RubyLsp
           [Types::Instance.new("String"), Types::Instance.new("Integer"), Types::Instance.new("Hash")],
           signature.params.map(&:types)
         )
+      end
+
+      def test_renders_typed_keyword_params_with_a_single_colon
+        signature = @store.lookup(DOCUMENTED, "required_keyword")
+
+        assert_equal "def required_keyword(key: Symbol) → String", signature.signature_line
       end
 
       def test_reads_raise_deprecated_and_option_tags
@@ -197,6 +211,15 @@ module RubyLsp
 
       def test_visibility_directive_overrides_the_definition_visibility
         signature = @store.lookup(FACTORY, "setup")
+
+        refute_nil signature
+        assert_equal :private, signature.visibility
+      end
+
+      def test_visibility_overrides_are_found_through_subclasses
+        store = SignatureStore.new(Indexer::RubyIndexerAdapter.new(index))
+
+        signature = store.lookup("FixtureProject::FactoryChild", "setup")
 
         refute_nil signature
         assert_equal :private, signature.visibility

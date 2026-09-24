@@ -20,4 +20,7 @@ module FixtureProject
     def setup
     end
   end
+
+  class FactoryChild < Factory
+  end
 end

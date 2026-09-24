@@ -22,4 +22,11 @@ module FixtureProject
       super
     end
   end
+
+  class BrokenReferenceService < BaseService
+    # (see Missing::Thing#process)
+    def process(input)
+      super
+    end
+  end
 end

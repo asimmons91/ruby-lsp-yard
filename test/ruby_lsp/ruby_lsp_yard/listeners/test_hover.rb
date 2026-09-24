@@ -15,7 +15,7 @@ module RubyLsp
           value = hover_on(source, "fetch")
 
           refute_nil value
-          assert_includes value, "def fetch(key: Symbol, default = ...: String?, limit: ...: Integer"
+          assert_includes value, "def fetch(key: Symbol, default = ...: String?, limit: Integer = ..., **options: Hash, &block)"
           assert_includes value, "→ Array<String>?"
           assert_includes value, "**Option:** `:strict` (`Boolean`)"
         end

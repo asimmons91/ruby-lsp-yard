@@ -469,6 +469,9 @@ module RubyLsp
       end
 
       def visibility_for(definition, singleton)
+        # `@!visibility` overrides are collected while scanning an owner's directives. A definition may belong to
+        # an ancestor (inherited method), so make sure that owner has been scanned before reading the override.
+        directive_entries(base_owner(definition.owner)) if definition.owner
         @visibility_overrides[[definition.owner, definition.name, singleton_for(definition) || singleton]]
       end
 

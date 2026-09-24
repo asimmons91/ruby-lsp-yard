@@ -37,6 +37,12 @@ module FixtureProject
       [first, rest, options]
     end
 
+    # @param key [Symbol] the key
+    # @return [String]
+    def required_keyword(key:)
+      key.to_s
+    end
+
     # Looks up a value.
     #
     # @param key [Symbol] lookup key

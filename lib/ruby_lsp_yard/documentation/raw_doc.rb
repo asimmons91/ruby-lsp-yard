@@ -48,11 +48,12 @@ module RubyLsp
           @returns.flat_map(&:types)
         end
 
-        # Whether any tag (as opposed to a directive) carried information.
+        # Whether any tag (as opposed to a directive) carried information. A leading `(see ...)` reference alone
+        # does not count: when it cannot be resolved the signature should fall back to its ancestors.
         def tagged?
           !(params.empty? && returns.empty? && yields.empty? && yield_params.empty? &&
             yield_returns.empty? && options.empty? && raises.empty? && overloads.empty? &&
-            metadata.empty? && !deprecated? && reference.nil?)
+            metadata.empty? && !deprecated?)
         end
 
         def empty?
