@@ -1,0 +1,115 @@
+# frozen_string_literal: true
+
+# Shared contract that every Indexer Adapter backend must satisfy (FR-M0-04). The including test class must implement
+# `#build_adapter(index)` and provide the fixture index (see `IndexHelpers`).
+module AdapterContract
+  ANIMAL = "FixtureProject::Animal"
+  DOG = "FixtureProject::Dog"
+  GREETABLE = "FixtureProject::Greetable"
+
+  def adapter
+    @adapter ||= build_adapter(index)
+  end
+
+  def index
+    @index ||= build_fixture_index
+  end
+
+  def test_method_definitions_include_location_comments_and_metadata
+    definition = adapter.method_definitions(ANIMAL, "speak").first
+
+    refute_nil definition
+    assert_equal "speak", definition.name
+    assert_equal ANIMAL, definition.owner
+    assert_equal :method, definition.kind
+    assert_equal :public, definition.visibility
+    assert_includes definition.comments, "@param suffix [String]"
+    assert_includes definition.comments, "@return [String]"
+    assert_operator definition.location.start_line, :>, 0
+    assert_match(/animals\.rb/, definition.uri.to_s)
+  end
+
+  def test_method_definitions_resolve_inherited_methods
+    definitions = adapter.method_definitions(DOG, "speak")
+
+    assert_equal [ANIMAL], definitions.map(&:owner)
+  end
+
+  def test_method_definitions_find_singleton_methods
+    definitions = adapter.method_definitions(DOG, "species", singleton: true)
+
+    assert_equal ["species"], definitions.map(&:name)
+    assert_equal ["#{DOG}::<Class:Dog>"], definitions.map(&:owner)
+    assert_empty adapter.method_definitions(DOG, "species")
+  end
+
+  def test_method_definitions_expose_visibility
+    definition = adapter.method_definitions(ANIMAL, "secret").first
+
+    refute_nil definition
+    assert_equal :private, definition.visibility
+  end
+
+  def test_method_definitions_never_raise_for_unknown_names
+    assert_empty adapter.method_definitions("No::Such", "method")
+    assert_empty adapter.method_definitions(ANIMAL, "nope")
+  end
+
+  def test_attribute_definitions_return_readers_and_writers
+    readers = adapter.attribute_definitions(ANIMAL, "name")
+    accessors = adapter.attribute_definitions(ANIMAL, "age")
+
+    assert_equal ["name"], readers.map(&:name)
+    assert_equal [:attribute], readers.map(&:kind)
+    assert_includes readers.first.comments, "@return [String]"
+
+    assert_equal ["age", "age="], accessors.map(&:name)
+  end
+
+  def test_attribute_definitions_never_raise_for_unknown_attributes
+    assert_empty adapter.attribute_definitions(ANIMAL, "nope")
+    assert_empty adapter.attribute_definitions("No::Such", "name")
+  end
+
+  def test_resolve_constant_uses_the_given_nesting
+    assert_equal DOG, adapter.resolve_constant("Dog", ["FixtureProject"])
+    assert_equal "FixtureProject::Nested::Thing", adapter.resolve_constant("Nested::Thing", ["FixtureProject"])
+    assert_equal "FixtureProject::DEFAULT_NAME", adapter.resolve_constant("DEFAULT_NAME", ["FixtureProject"])
+    assert_equal DOG, adapter.resolve_constant("::FixtureProject::Dog", [])
+  end
+
+  def test_resolve_constant_returns_nil_when_unresolvable
+    assert_nil adapter.resolve_constant("Nope", ["FixtureProject"])
+    assert_nil adapter.resolve_constant("Dog", [])
+  end
+
+  def test_ancestors_are_linearized
+    assert_equal [DOG, ANIMAL, GREETABLE], adapter.ancestors(DOG)
+    assert_equal [ANIMAL, GREETABLE], adapter.ancestors(ANIMAL)
+  end
+
+  def test_ancestors_never_raise_for_unknown_names
+    assert_empty adapter.ancestors("No::Such")
+  end
+
+  def test_methods_of_filters_by_prefix_and_owner
+    assert_includes adapter.methods_of(DOG, prefix: "bar").map(&:name), "bark"
+    assert_empty adapter.methods_of(ANIMAL, prefix: "bar")
+    assert_includes adapter.methods_of(DOG).map(&:name), "speak"
+  end
+
+  def test_methods_of_finds_singleton_methods
+    assert_includes adapter.methods_of(DOG, prefix: "spec", singleton: true).map(&:name), "species"
+    assert_empty adapter.methods_of(DOG, prefix: "spec")
+  end
+
+  def test_on_change_notifies_subscribers
+    received = []
+    adapter.subscribe { |uris| received.concat(uris) }
+    uri = fixture_uri("project/lib/animals.rb")
+
+    adapter.on_change([uri])
+
+    assert_equal [uri], received
+  end
+end

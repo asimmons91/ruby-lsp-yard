@@ -13,12 +13,18 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
-    name: Ruby ${{ matrix.ruby }}
+    name: Ruby ${{ matrix.ruby }} / ${{ matrix.gemfile }}
     strategy:
+      fail-fast: false
       matrix:
         ruby:
           - '4.0'
           - '3.4'
+        gemfile:
+          - gemfiles/ruby_lsp_0.26.gemfile
+
+    env:
+      BUNDLE_GEMFILE: ${{ matrix.gemfile }}
 
     steps:
       - uses: actions/checkout@v6
