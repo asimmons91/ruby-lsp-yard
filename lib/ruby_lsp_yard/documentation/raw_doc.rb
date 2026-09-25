@@ -69,8 +69,10 @@ module RubyLsp
       RawMetadata = Struct.new(:tag, :name, :types, :text)
       RawOverload = Struct.new(:signature, :doc)
 
-      # A single `@!method`, `@!attribute`, `@!parse` or `@!visibility` directive. `doc` holds the nested docstring
-      # for method and attribute directives; `text` holds the raw code for `@!parse` or the new visibility.
+      # A single `@!method`, `@!attribute`, `@!parse`, `@!visibility`, `@!macro` or `@!domain` directive. `doc` holds
+      # the nested docstring for method and attribute directives; `text` holds the raw code for `@!parse`, the new
+      # visibility for `@!visibility`, or the macro data for `@!macro`; `types` carries the macro flags (`attach`,
+      # `new`) or the domain type expressions.
       RawDirective = Struct.new(:kind, :name, :singleton, :types, :text, :doc)
     end
   end

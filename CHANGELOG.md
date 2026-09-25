@@ -1,5 +1,20 @@
 ## [Unreleased]
 
+- M7: expand `@!macro` DSL definitions — named, `[new]` and `[attach]` macros, YARD positional interpolation (`$0`,
+  `$1`, ranges, `$*`, escaping), inheritance through `include`/`extend`/superclasses, recursive expansion with
+  cycle detection, and only `@!method`/`@!attribute`/`@!parse` producing definitions (FR-M7-01)
+- M7: apply `@!domain` (and `.solargraph.yml` `domains`) as implicit-`self` completions inside the namespace,
+  with `Class<X>` resolved as a class context and plain `X` as an instance context (FR-M7-02)
+- M7: read `.solargraph.yml` `domains` and `require` hints from the workspace root, refreshing when the file
+  changes (FR-M7-03)
+- M7: support Solargraph-style inline `# @type [Foo]` annotations above local and instance variable assignments
+  through the live document, so unsaved buffers are typed correctly (FR-M2-13, D6)
+- M7: load `rbs collection` signatures automatically when the workspace has one, so collection RBS wins over YARD
+  like core RBS does (FR-M3-07)
+- M7: support `rbs-inline` (`#:` comments and `@rbs` tags) as a second source of RBS types via a new runtime
+  dependency; inline signatures outrank YARD comments (FR-M7-04, D5). The `rbs` dependency is now `~> 4.0`
+- M7: add `enableMacros`, `enableDomains`, `enableSolargraph` and `enableInlineTypes` settings; complete
+  `@!macro` and `@!domain` in comment directive completion
 - M5: report broken or inconsistent YARD documentation through Ruby LSP's linter registration as the `"yard"`
   linter, with `YARD/UnknownParam`, `YARD/UnresolvedType`, `YARD/InvalidTypeSyntax`, `YARD/DuplicateTag`,
   `YARD/InvalidDirective` and `YARD/YieldWithoutBlock` on by default (FR-M5-01, FR-M5-04)

@@ -28,7 +28,9 @@ module RubyLsp
           ["@!method", "@!method ${1:name}(${2:params}) $0"],
           ["@!attribute", "@!attribute [${1:r}] ${2:name} $0"],
           ["@!parse", "@!parse $0"],
-          ["@!visibility", "@!visibility ${1:private} $0"]
+          ["@!visibility", "@!visibility ${1:private} $0"],
+          ["@!macro", "@!macro ${1:name} $0"],
+          ["@!domain", "@!domain ${1:Namespace} $0"]
         ].freeze
         CANDIDATE_LIMIT = 100
 
@@ -137,7 +139,7 @@ module RubyLsp
           )
         end
 
-        # FR-M4-04: directives supported in M4. `@!macro` and `@!domain` land in M7.
+        # FR-M4-04: directives supported in M4; `@!macro` and `@!domain` were added in M7.
         def directive_items
           DIRECTIVES.each_with_index.map do |(label, text), index|
             item(label: label, filter_text: label, new_text: text, plain_text: plain_text(text), rank: index)

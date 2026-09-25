@@ -7,16 +7,18 @@ carry thorough YARD documentation.
 ## Status
 
 **M0 (foundation), M1 (YARD parsing, signature store, hover), M2 (inference, completion, definition), M3
-(core/stdlib types, generics, gem caching), M4 (YARD authoring), M5 (YARD diagnostics) and M6 (Rubydex
-backend) are complete.** The
+(core/stdlib types, generics, gem caching), M4 (YARD authoring), M5 (YARD diagnostics), M6 (Rubydex
+backend) and M7 (advanced directives and ecosystem compatibility) are complete.** The
 add-on reads YARD `@param` and `@return` tags through the `yard` gem's docstring parser and infers receiver types
 from literals, constants, `self`, method parameters, local and instance variable assignments, `Foo.new`, call
 chains, unions, duck types and blocks. Core and stdlib signatures come from RBS, generic type variables are
 substituted at the call site, and YARD comments in dependency gems are cached on disk. Inside comments,
 completion helps write tags, types and parameters, hover and go to definition work on type names, and a code
 action inserts a comment skeleton. Diagnostics report broken or inconsistent YARD documentation with configurable
-severities and quick fixes. The add-on runs on Ruby LSP 0.26 (`RubyIndexer`) and 0.27 (`Rubydex`) through the
-same Indexer Adapter. Advanced directives land in M7; see
+severities and quick fixes. DSL-heavy code is supported through `@!macro` expansions and `@!domain` completion,
+and Solargraph users get `.solargraph.yml` domains and inline `# @type [Foo]` annotations. `rbs collection`
+signatures and `rbs-inline` (`#:`/`@rbs`) comments act as additional RBS sources. The add-on runs on Ruby LSP
+0.26 (`RubyIndexer`) and 0.27 (`Rubydex`) through the same Indexer Adapter. See
 [`docs/requirements_v1.md`](docs/requirements_v1.md) for the full plan.
 
 Known gaps:
@@ -35,10 +37,17 @@ Known gaps:
   excludes `def` nodes, so definitions are not enriched.
 - Comment authoring is a version-guarded patch (D3) and only activates on the Ruby LSP versions listed in
   `lib/ruby_lsp_yard/authoring/patch.rb`; any other version disables it with one warning while the rest of the
-  add-on keeps working.
-- Solargraph-style inline `# @type [Foo]` annotations are deferred to M7 (D6), and the per-file Sorbet policy in
-  D5 cannot be applied because the completion and definition hooks do not receive the file's Sorbet level.
-- `rbs collection` gem signatures (FR-M3-07) are deferred to M7; the RBS bridge covers core and stdlib only.
+  add-on keeps working. Inline `@type` annotations are read through the same patch, so they are inactive there too.
+- The per-file Sorbet policy in D5 cannot be applied because the completion and definition hooks do not receive the
+  file's Sorbet level.
+- Named macros defined only inside dependency gems are not discovered for invocation in workspace docstrings;
+  attach macros still resolve through the index. Macro-generated methods reflect saved files (the current buffer
+  is used for the document being edited only where inference runs on it).
+- `.solargraph.yml` is not covered by Ruby LSP's `**/*.rb` file watcher, so changes are picked up when the
+  add-on re-checks the file (mtime) rather than immediately. `require` hints are read but informational: the host
+  index decides what is available.
+- `rbs-inline` support follows the `rbs-inline` gem's parser output, so undocumented corners of that prototype
+  syntax (e.g. non-`def` DSLs) are not interpreted.
 - RBS intersections are approximated as unions and records as hashes, and rbs gem signatures are not navigable
   targets (go to definition for core methods still points at the `rbs` gem's `.rbs` files through Ruby LSP).
 
@@ -49,8 +58,10 @@ Known gaps:
   `0.27.0.beta5`)
 - `yard` >= 0.9 (`~> 0.9`) is installed as a runtime dependency for docstring parsing only; the Registry,
   `yardoc` and HTML generation are never used
-- `rbs` >= 3, < 5 is installed as a runtime dependency for core/stdlib signatures; the RBS environment is built
-  in a background thread and never blocks requests
+- `rbs` >= 4.0 (`~> 4.0`) is installed as a runtime dependency for core/stdlib signatures; the RBS environment is
+  built in a background thread and never blocks requests
+- `rbs-inline` (`~> 0.14`) is installed as a runtime dependency for `#:`/`@rbs` annotations (FR-M7-04); the
+  tighter `rbs ~> 4.0` range comes from that dependency
 
 ## Installation
 
@@ -92,7 +103,11 @@ Settings live under `rubyLsp.addonSettings`, keyed by the add-on name. For VS Co
 | `diagnosticRules` | `{}` | Per-rule severities (`"error"`, `"warning"`, `"info"`, `"hint"`) or `false`/`"off"` to disable a rule |
 | `enableAuthoring` | `true` | YARD comment completion and skeletons (M4), and diagnostics quick fixes |
 | `enableSnippets` | `true` | Snippet placeholders in comment completion (`false` inserts plain text) |
-| `enableCoreTypes` | `true` | RBS core/stdlib signatures and generics |
+| `enableCoreTypes` | `true` | RBS core/stdlib signatures, `rbs collection` and generics |
+| `enableMacros` | `true` | `@!macro` expansion at DSL call sites (M7) |
+| `enableDomains` | `true` | `@!domain` and `.solargraph.yml` domains in implicit-`self` completion (M7) |
+| `enableSolargraph` | `true` | Reading `.solargraph.yml` (M7) |
+| `enableInlineTypes` | `true` | `rbs-inline` `#:`/`@rbs` annotations (M7) |
 | `logLevel` | `"info"` | One of `debug`, `info`, `warn`, `error` |
 | `debugInference` | `false` | Logs how inference reached each result |
 
@@ -249,6 +264,75 @@ behavior untouched. Comment completion uses snippet placeholders when the editor
 LSP 0.26 applies client capabilities before add-ons load, so the capability is usually unknown and the add-on
 assumes support. Clients without snippets support can set `enableSnippets` to `false` to insert plain text
 (NFR-C3).
+
+## Macros and domains
+
+`@!macro` directives are expanded into definitions (FR-M7-01). Named macros (`@!macro returnself` plus
+`@macro returnself` invocations), `[new]` macros and `[attach]` macros are supported, with YARD's positional
+interpolation: `$0`–`$N`, `${N-M}` ranges (including negative indexes), `$*` for the full DSL call and `\$` to
+escape. A macro is applied only to calls that resolve to the method where the macro was defined, so attach macros
+defined on a class method apply to subclass DSL calls, and macros are found through `include`, `extend` and
+superclasses. Macros that reference other macros expand recursively with cycle detection. Only expansions
+containing `@!method`, `@!attribute` or `@!parse` produce new methods or attributes; those definitions then flow
+into completion, hover and go to definition like indexed ones. For example:
+
+```ruby
+class Resource
+  # @!macro [attach] property
+  #   @!method $1
+  #     @return [$2] the $1 property
+  def self.property(name, type); end
+end
+
+class Post < Resource
+  property :title, String
+end
+# Post.new.title is now typed String
+```
+
+`@!domain` (FR-M7-02) binds a DSL namespace to a class or module: inside it, the domain's methods are offered as
+implicit-`self` completions. `Class<X>` domains contribute `X`'s class methods, plain `X` its instance methods.
+The `.solargraph.yml` `domains` list (FR-M7-03) applies the same binding workspace-wide.
+
+## Solargraph compatibility
+
+`.solargraph.yml` at the workspace root is read for its `domains` and `require` hints (`enableSolargraph`). The
+file is re-read when its modification time changes. `require` hints are informational: the host index still
+decides what is available, because the add-on does not parse required files itself.
+
+Inline `# @type [Foo]` annotations (FR-M2-13) type local and instance variable assignments:
+
+```ruby
+# @type [FixtureProject::Documented]
+doc = unknown_builder
+doc. # => Documented# methods
+```
+
+Annotations are read from the live document through the comment patch, so they work in unsaved buffers; without
+the patch the assignment falls back to ordinary inference. The annotation on an assignment replaces that
+assignment's inferred type, and unions (`# @type [Foo, nil]`) are supported.
+
+## rbs collection and rbs-inline
+
+When the workspace has an `rbs collection` (`rbs_collection.yaml` plus its lockfile), the loader adds the
+collection's signatures to the background RBS environment automatically (FR-M3-07). Collection signatures follow
+the same precedence as core RBS: where they and YARD both describe a method, RBS wins (D5).
+
+`rbs-inline` annotations are a second source of RBS types (FR-M7-04, D5). Files that opt in with
+`# rbs_inline: enabled` have their `#:` comments and `@rbs` tags parsed lazily, and the resulting signatures
+outrank the file's own YARD comments:
+
+```ruby
+# rbs_inline: enabled
+class Person
+  attr_reader :name #: String
+
+  # @rbs (Integer times) -> String
+  def repeat(times) = "x" * times
+end
+```
+
+Set `enableInlineTypes` to `false` to ignore these annotations.
 
 ## Development
 

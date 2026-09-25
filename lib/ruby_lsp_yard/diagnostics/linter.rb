@@ -77,7 +77,9 @@ module RubyLsp
             log: @log,
             targets: targets
           )
-          collect(targets, context)
+          return collect(targets, context) unless @inference
+
+          @inference.with_document(document) { collect(targets, context) }
         rescue => e
           @log&.error("Diagnostics failed: #{e.class}: #{e.message}")
           nil

@@ -6,6 +6,7 @@ require "uri"
 
 require_relative "../../ruby_lsp_yard/authoring"
 require_relative "../../ruby_lsp_yard/diagnostics"
+require_relative "../../ruby_lsp_yard/domains"
 require_relative "../../ruby_lsp_yard/gems"
 require_relative "../../ruby_lsp_yard/indexer"
 require_relative "../../ruby_lsp_yard/inference"
@@ -13,9 +14,11 @@ require_relative "../../ruby_lsp_yard/listeners/completion"
 require_relative "../../ruby_lsp_yard/listeners/definition"
 require_relative "../../ruby_lsp_yard/listeners/hover"
 require_relative "../../ruby_lsp_yard/log"
+require_relative "../../ruby_lsp_yard/macros"
 require_relative "../../ruby_lsp_yard/rbs"
 require_relative "../../ruby_lsp_yard/settings"
 require_relative "../../ruby_lsp_yard/signature_store"
+require_relative "../../ruby_lsp_yard/solargraph"
 require_relative "../../ruby_lsp_yard/version"
 
 RubyLsp::Addon.depend_on_ruby_lsp!(">= 0.26.0", "< 0.28.0")
@@ -28,16 +31,27 @@ module RubyLsp
       LINTER_ID = "yard"
 
       attr_reader :settings, :indexer, :signature_store, :inference, :log, :rbs_loader, :rbs_source, :gem_cache,
-        :diagnostics
+        :diagnostics, :macros, :domains, :solargraph, :inline
 
       def activate(global_state, outgoing_queue)
         @settings = Settings.new(global_state.settings_for_addon(name))
         @log = Log.new(outgoing_queue, level: settings.log_level)
         @indexer = Indexer.for(global_state, log: log)
-        @rbs_loader = build_rbs_loader
+        @rbs_loader = build_rbs_loader(global_state)
         @rbs_source = Rbs::Source.new(@rbs_loader, log: @log) if @rbs_loader
         @gem_cache = Gems::Cache.new(locator: Gems::Locator.new, log: @log)
-        @signature_store = SignatureStore.new(@indexer, log: log, rbs: @rbs_source, gem_cache: @gem_cache)
+        @macros = build_macros
+        @solargraph = build_solargraph(global_state.workspace_path)
+        @domains = build_domains
+        @inline = build_inline
+        @signature_store = SignatureStore.new(
+          @indexer,
+          log: log,
+          rbs: @rbs_source,
+          gem_cache: @gem_cache,
+          macros: @macros,
+          inline: @inline
+        )
         @inference = Inference::Engine.new(
           adapter: @indexer,
           store: @signature_store,
@@ -73,6 +87,10 @@ module RubyLsp
         @gem_cache = nil
         @inference = nil
         @signature_store = nil
+        @macros = nil
+        @domains = nil
+        @solargraph = nil
+        @inline = nil
         @indexer = nil
         @settings = nil
         @log = nil
@@ -115,6 +133,8 @@ module RubyLsp
           adapter: @indexer,
           store: @signature_store,
           inference: @inference,
+          macros: @macros,
+          domains: @domains,
           log: @log
         )
       end
@@ -129,6 +149,7 @@ module RubyLsp
           dispatcher,
           adapter: @indexer,
           inference: @inference,
+          macros: @macros,
           log: @log
         )
       end
@@ -143,12 +164,57 @@ module RubyLsp
       end
 
       # NFR-P1: core/stdlib signatures load in the background; features that need them degrade to YARD until ready.
-      def build_rbs_loader
+      # FR-M3-07: an `rbs collection` at the workspace root is auto-detected by the loader.
+      def build_rbs_loader(global_state)
         return nil unless settings.enabled?(:core_types)
 
-        loader = Rbs::Loader.new(log: @log)
+        workspace_path = global_state.workspace_path
+        loader = Rbs::Loader.new(log: @log, workspace_path: workspace_path)
         loader.start
         loader
+      rescue => e
+        @log&.error("Failed to set up RBS: #{e.class}: #{e.message}")
+        nil
+      end
+
+      # FR-M7-01: macros are opt-out; the store scans the index lazily and is skipped entirely when disabled.
+      def build_macros
+        return nil unless settings.enabled?(:macros)
+
+        Macros::Store.new(@indexer, log: @log)
+      rescue => e
+        @log&.error("Failed to set up macros: #{e.class}: #{e.message}")
+        nil
+      end
+
+      # FR-M7-02: `@!domain` namespaces are opt-out; the registry scans the index lazily.
+      def build_domains
+        return nil unless settings.enabled?(:domains)
+
+        Domains::Registry.new(@indexer, log: @log, global: -> { @solargraph&.domains || [] })
+      rescue => e
+        @log&.error("Failed to set up domains: #{e.class}: #{e.message}")
+        nil
+      end
+
+      # FR-M7-03: `.solargraph.yml` is read from the workspace root; `enableSolargraph` turns the integration off.
+      def build_solargraph(workspace_path)
+        return nil unless settings.enabled?(:solargraph)
+
+        Solargraph::Config.new(workspace_path: workspace_path, log: @log)
+      rescue => e
+        @log&.error("Failed to read .solargraph.yml: #{e.class}: #{e.message}")
+        nil
+      end
+
+      # FR-M7-04: `rbs-inline` annotations are opt-out; files parse lazily.
+      def build_inline
+        return nil unless settings.enabled?(:inline_types)
+
+        Rbs::Inline.new(@indexer, log: @log)
+      rescue => e
+        @log&.error("Failed to set up rbs-inline: #{e.class}: #{e.message}")
+        nil
       end
 
       # FR-M5-01: register the diagnostics linter under {LINTER_ID}. Ruby LSP 0.26 only runs linters the user lists

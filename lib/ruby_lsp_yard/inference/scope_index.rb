@@ -92,24 +92,34 @@ module RubyLsp
         # outward through the scopes a closure can read (FR-M2-05). Operator assignments have no standalone RHS and
         # are skipped.
         def assignment_value_nodes(name, before_offset)
+          assignment_entries(name, before_offset).map { |_offset, value, _node| value }
+        end
+
+        # `[offset, value, write_node]` triples for assignments to `name` before `before_offset`. The write node lets
+        # callers read an inline `# @type [Foo]` annotation for that assignment (FR-M2-13).
+        def assignment_entries(name, before_offset)
           @local_scopes.flat_map do |scope|
             table = @assignment_tables[scope] ||= collect(scope, excluded: NESTED_LOCAL_SCOPES)
             next [] unless table
 
             (table[name.to_s] || [])
-              .select { |offset, _value| offset < before_offset }
+              .select { |offset, _value, _node| offset < before_offset }
               .sort_by(&:first)
-              .map(&:last)
           end
         end
 
         # RHS nodes of assignments to the instance variable `name` anywhere in the enclosing class or module
         # (FR-M2-08), including method bodies but not nested classes.
         def ivar_value_nodes(name)
+          ivar_entries(name).map { |_offset, value, _node| value }
+        end
+
+        # `[offset, value, write_node]` triples for instance variable assignments (FR-M2-13).
+        def ivar_entries(name)
           table = ivar_assignments
           return [] unless table
 
-          (table[name.to_s] || []).sort_by(&:first).map(&:last)
+          (table[name.to_s] || []).sort_by(&:first)
         end
 
         # Simple block parameters as `[name, kind]` pairs. Destructured parameters are skipped.
@@ -153,13 +163,13 @@ module RubyLsp
 
             case current
             when Prism::LocalVariableWriteNode
-              table[current.name.to_s] << [current.location.start_offset, current.value]
+              table[current.name.to_s] << [current.location.start_offset, current.value, current]
             when Prism::LocalVariableAndWriteNode, Prism::LocalVariableOrWriteNode
-              table[current.name.to_s] << [current.location.start_offset, current.value]
+              table[current.name.to_s] << [current.location.start_offset, current.value, current]
             when Prism::InstanceVariableWriteNode
-              table[current.name.to_s] << [current.location.start_offset, current.value]
+              table[current.name.to_s] << [current.location.start_offset, current.value, current]
             when Prism::InstanceVariableAndWriteNode, Prism::InstanceVariableOrWriteNode
-              table[current.name.to_s] << [current.location.start_offset, current.value]
+              table[current.name.to_s] << [current.location.start_offset, current.value, current]
             when Prism::MultiWriteNode
               record_multi_write(table, current)
             end
@@ -190,7 +200,7 @@ module RubyLsp
           pairs = node.lefts.zip(values.elements) + node.rights.reverse.zip(values.elements.reverse)
           pairs.each do |target, value|
             name = target_name(target)
-            table[name] << [node.location.start_offset, value] if name
+            table[name] << [node.location.start_offset, value, node] if name
           end
         end
 

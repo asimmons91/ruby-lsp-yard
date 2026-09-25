@@ -41,7 +41,9 @@ module RubyLsp
               @return [self]
           DOC
 
-          assert_empty doc.directives
+          assert_equal 1, doc.directives.size
+          assert_equal :macro, doc.directives.first.kind
+          assert_equal "returnself", doc.directives.first.name
           assert_empty ::YARD::Registry.all
         end
       end

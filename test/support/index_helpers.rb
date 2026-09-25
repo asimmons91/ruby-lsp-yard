@@ -42,8 +42,11 @@ module IndexHelpers
     project/lib/nested.rb
     project/lib/documented.rb
     project/lib/directives.rb
+    project/lib/domains.rb
     project/lib/inheritance.rb
     project/lib/inference.rb
+    project/lib/inline.rb
+    project/lib/macros.rb
   ].freeze
 
   def rubydex?

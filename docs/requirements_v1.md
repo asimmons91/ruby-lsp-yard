@@ -608,6 +608,53 @@ surrounding-method shape and singleton nesting markers moved, and both are norma
   - `@type` inline annotations, if not already added in M2
 - **FR-M7-04:** `rbs-inline` (`#:`) comments as a second source of types (D5).
 
+### 12.1 M7 implementation notes (2026-09-24)
+
+- **`@!macro` (FR-M7-01).** `TagExtractor` turns YARD's `MacroDirective` into a `:macro` raw directive (name,
+  flags, data). Expansion is the add-on's own `Macros::Expander`, a faithful port of `MacroObject.expand`
+  (`$0..$N`, `${N-M}` ranges with negative indexes, `$*`, `\$`, joined with `", "`), so the YARD Registry is never
+  touched (D2). Named macros are catalogued lazily from `all_definitions` (a new adapter method backed by
+  `RubyIndexer` entries and Rubydex declarations), not by re-parsing files; attach macros are read from the
+  comments of the method each DSL call resolves to, which makes `include`/`extend`/superclass inheritance fall
+  out of the existing ancestor walk. Call sites are discovered by parsing the owner's defining files
+  (`constant_definitions` URIs) and walking class-level calls, mirroring the diagnostics scanner. Only
+  `@!method`/`@!attribute`/`@!parse` in the expansion create definitions; they are built with the shared
+  `Documentation::SignatureBuilder`, which was extracted from `SignatureStore` for this purpose. Expansion
+  recurses with a visited set and an iteration cap (NFR-R3). Named macros defined only inside gems are found when
+  their target method is resolved but are not catalogued globally; this is documented in the README.
+- **`@!domain` (FR-M7-02).** YARD drops `@!domain`, so it is scanned from raw comment text and stored as a
+  `:domain` raw directive. `Domains::Registry` maps a namespace to its domain type expressions (from its own
+  comments and from `.solargraph.yml`), parsing them with the existing `Types::Parser` against the declaring
+  namespace's nesting: `Class<X>` becomes a singleton context, `X` an instance context, and comma/union lists are
+  flattened. The completion listener now handles implicit-receiver calls (previously ignored) and emits the
+  domain members, deduplicating against the host's own implicit-`self` items (FR-M2-17).
+- **`@type` (FR-M2-13, D6).** The M2 objection (comments are not in the AST, disk reads are stale) is resolved
+  with the M4 patch: the patched Completion/Hover/Definition requests pass the live `RubyDocument` to
+  `Engine#with_document`, and the diagnostics linter does the same around its run. `Inference::Annotations`
+  parses the comment block immediately above a write node, and `ScopeIndex` now records the write node alongside
+  the assignment's value so locals and instance variables use the annotation instead of the inferred RHS type.
+  Without the patch (or outside a request) inference sees no document and behaves as before.
+- **`rbs collection` (FR-M3-07).** `Rbs::Loader` accepts the workspace path, searches it and its parents for
+  `rbs_collection.yaml`, and — when the lockfile exists — adds the collection through
+  `EnvironmentLoader#add_collection` before the environment is built. Collection signatures flow through
+  `Rbs::Source`, so RBS-wins-over-YARD (D5) applies to gem methods as well as core ones. A broken collection is
+  logged and skipped.
+- **`rbs-inline` (FR-M7-04, D5).** `rbs-inline ~> 0.14` is a runtime dependency (which tightens the `rbs`
+  constraint to `~> 4.0`). `Rbs::Inline` lazily parses files whose source contains the `rbs_inline:` magic
+  comment using `RBS::Inline::Parser`/`Writer` and the standard `RBS::Parser`, converts declarations with the M3
+  `Converter` (parameters and blocks via a `FunctionSignature` module shared with `Rbs::Source`), and caches per
+  path until watched files change. `SignatureStore` consults it inside `signature_from_definition`, so inline
+  signatures outrank the file's YARD comments; core RBS still answers first for core owners. The gem-cache schema
+  does not change because inline signatures are never persisted.
+- **Settings and adapter surface.** `enableMacros`, `enableDomains`, `enableSolargraph` and `enableInlineTypes`
+  were added (all default on, read at activation like the other feature toggles). The adapter gained
+  `all_definitions`; both backends implement it and the shared contract covers it. Rubydex namespace declarations
+  normalize to a `nil` owner in `all_definitions` to match `RubyIndexer` (FR-M6-04).
+- **Testing.** Unit suites cover the expander (including output parity with `YARD::CodeObjects::MacroObject`),
+  the macro catalog/store, the domain registry, `.solargraph.yml`, annotations, the collection loader and the
+  inline source; LSP integration tests cover macro completion/hover/definition, domain completion, inline `@type`
+  and `rbs-inline`/collection precedence on both backends (`0.26.11` and `0.27.0.beta5`).
+
 ---
 
 ## 13. Open decisions
@@ -618,8 +665,8 @@ surrounding-method shape and singleton nesting markers moved, and both are norma
 | **D2** ✅ | YARD parsing dependency | **Decided:** `yard` gem as a runtime dependency, using only its docstring parser (not the Registry or `yardoc`) | Type expressions still need our own parser (FR-M1-07), since YARD stores types as plain strings |
 | **D3** ✅ | How to get completion inside comments (M4) | **Decided:** Monkeypatch only, with a version check (FR-M4-P1 to P6) | No upstream proposal planned |
 | **D4** | Target audience | Plain Ruby only · Rails-aware (coexist with ruby-lsp-rails, understand ActiveRecord DSL docs) | Plain Ruby first, Rails tested for compatibility |
-| **D5** ✅ | Coexisting with Sorbet and RBS | **Decided:** Turn off in Sorbet-typed files; where RBS and YARD both describe a method, RBS wins | *Still open:* rbs-inline support (proposed: M7) and `rbs collection` gem signatures (FR-M3-07) |
-| **D6** | How closely to match Solargraph | None · `@type` inline only · `@type` + `.solargraph.yml` domains | *Still open:* `@type` inline deferred from M2 to M7 (§7.5), `.solargraph.yml` in M7 |
+| **D5** ✅ | Coexisting with Sorbet and RBS | **Decided:** Turn off in Sorbet-typed files; where RBS and YARD both describe a method, RBS wins | *Resolved in M7:* rbs-inline support (FR-M7-04) and `rbs collection` gem signatures (FR-M3-07) are implemented (§12.1) |
+| **D6** ✅ | How closely to match Solargraph | None · `@type` inline only · `@type` + `.solargraph.yml` domains | **Decided:** `@type` inline plus `.solargraph.yml` domains, implemented in M7 (§12.1); `require` hints are informational |
 | **D7** | Completion when the receiver type is unknown; handling `nil` and `Object` | Show nothing · Leave it to Ruby LSP's default behavior · Guess from method names | Leave it to Ruby LSP; leave `nil` out of unions; treat `Object` as unknown |
 | **D8** | How much inference follows control flow | Assignments only (union) · Narrowing on `nil` checks, `is_a?` and `case`/`when` | Union in M2; narrowing as a later M3 stretch goal |
 | **D9** ✅ | Which gems to read and where to cache | All bundled gems · An allowlist · None · Cache in `.ruby-lsp/` vs `~/.cache` | **Decided:** every gem the host indexes (Ruby LSP's exclusions apply by construction); cache in `~/.cache/ruby-lsp-yard/<schema>/` shared across projects, keyed by gem name/version, invalidated by a `Gemfile.lock` digest (§8.1) |

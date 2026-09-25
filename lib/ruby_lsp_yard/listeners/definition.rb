@@ -14,11 +14,12 @@ module RubyLsp
         include RubyLsp::Requests::Support::Common
         include Responses
 
-        def initialize(response_builder, node_context, dispatcher, adapter:, inference:, log: nil)
+        def initialize(response_builder, node_context, dispatcher, adapter:, inference:, macros: nil, log: nil)
           @response_builder = response_builder
           @node_context = node_context
           @adapter = adapter
           @inference = inference
+          @macros = macros
           @log = log
 
           dispatcher.register(self, :on_call_node_enter)
@@ -35,8 +36,15 @@ module RubyLsp
           return if resolution.empty? || resolution.duck_methods.any?
 
           links = resolution.members.flat_map do |member|
-            @adapter.method_definitions(member.owner, message, singleton: member.singleton).filter_map do |definition|
+            found = @adapter.method_definitions(member.owner, message, singleton: member.singleton).filter_map do |definition|
               link_for(definition)
+            end
+            # FR-M7-01: macro-generated methods have no index entry, so fall back to their call-site location
+            # (including ancestors, which inherit generated methods).
+            if found.empty? && @macros
+              macro_links(member, message)
+            else
+              found
             end
           end
           links.uniq! { |link| link_key(link) }
@@ -60,6 +68,23 @@ module RubyLsp
             target_range: range_from_location(location),
             target_selection_range: range_from_location(selection)
           )
+        end
+
+        def link_for_signature(signature)
+          return nil unless signature.uri && signature.location
+
+          Interface::LocationLink.new(
+            target_uri: signature.uri.to_s,
+            target_range: range_from_location(signature.location),
+            target_selection_range: range_from_location(signature.location)
+          )
+        end
+
+        def macro_links(member, message)
+          @adapter.ancestors(member.owner).filter_map do |ancestor|
+            signature = @macros.lookup(ancestor, message, singleton: member.singleton)
+            signature ? link_for_signature(signature) : nil
+          end
         end
 
         def link_key(link)

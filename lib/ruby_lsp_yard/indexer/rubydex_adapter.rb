@@ -131,6 +131,30 @@ module RubyLsp
           log_failure("constant_candidates(#{prefix.inspect}, #{nesting.inspect})", e)
         end
 
+        def all_definitions(include_comments: true)
+          @graph.declarations.filter_map do |declaration|
+            definitions = declaration.definitions.to_a
+            next if definitions.empty?
+            next unless definitions.any? { |definition| definition.location.uri != BUILT_IN_URI }
+
+            name = declaration_name(declaration)
+            next if name.empty?
+
+            definitions.map do |definition|
+              definition_for(
+                definition,
+                declaration,
+                name: name,
+                kind: kind_for_declaration(declaration),
+                owner: namespace_declaration?(declaration) ? nil : UNSET,
+                include_comments: include_comments
+              )
+            end
+          end.flatten
+        rescue => e
+          log_failure("all_definitions", e)
+        end
+
         private
 
         # RubyIndexer stores singleton methods on a synthetic namespace named `Foo::<Class:Foo>`; Rubydex names it
@@ -389,9 +413,18 @@ module RubyLsp
             :module
           when Rubydex::Constant, Rubydex::ConstantAlias
             :constant
+          when Rubydex::Method
+            :method
           else
             :unknown
           end
+        end
+
+        # Rubydex names method declarations after the member (`age()`, `age=()`); other declarations use their name.
+        def declaration_name(declaration)
+          return declaration.name.to_s unless declaration.is_a?(Rubydex::Method)
+
+          declaration.unqualified_name.to_s.delete_suffix("()")
         end
 
         def reader_capable?(declaration)

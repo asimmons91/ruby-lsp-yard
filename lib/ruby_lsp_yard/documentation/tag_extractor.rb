@@ -13,6 +13,9 @@ module RubyLsp
         METHOD_NAME = /\A(?:self\s*\.\s*)?([^\s(]+)/
         SELF_RECEIVER = /\A\s*self\s*\./
         METADATA_TAGS = %w[api note see since example todo].freeze
+        # YARD does not know `@!domain` (it is a Solargraph extension) and silently drops it, so it is scanned from
+        # the raw comment text (FR-M7-02/03).
+        DOMAIN_DIRECTIVE = /\A\s*@!domain(?:\s+(.*?))?\s*\z/
 
         def initialize(log: nil)
           @log = log
@@ -33,6 +36,7 @@ module RubyLsp
           doc = RawDoc.new(summary: parser.text.to_s.strip, reference: reference)
           parser.tags.each { |tag| add_tag(doc, tag) }
           parser.directives.each { |directive| add_directive(doc, directive) }
+          add_domain_directives(doc, content)
           doc
         rescue => e
           @log&.error("Failed to parse docstring: #{e.class}: #{e.message}")
@@ -110,7 +114,63 @@ module RubyLsp
             )
           when ::YARD::Tags::VisibilityDirective
             doc.directives << RawDirective.new(kind: :visibility, text: directive.tag.text.to_s)
+          when ::YARD::Tags::MacroDirective
+            add_macro_directive(doc, directive.tag)
           end
+        end
+
+        # FR-M7-01: a macro definition carries data or the `new`/`attach` flags; an empty body is an invocation.
+        # Definitions and invocations are both kept, since expansion needs to distinguish them.
+        def add_macro_directive(doc, tag)
+          doc.directives << RawDirective.new(
+            kind: :macro,
+            name: tag.name.to_s.strip,
+            types: Array(tag.types),
+            text: tag.text.to_s
+          )
+        end
+
+        # FR-M7-02: `@!domain Class<Sinatra::Base>` lists the domains bound to the namespace the comment documents.
+        def add_domain_directives(doc, content)
+          content.to_s.each_line do |line|
+            match = DOMAIN_DIRECTIVE.match(line.chomp)
+            next unless match
+
+            types = split_type_list(match[1].to_s)
+            next if types.empty?
+
+            doc.directives << RawDirective.new(kind: :domain, types: types)
+          end
+        end
+
+        # Splits a type list on top-level commas, respecting `<...>`, `{...}`, `(...)` and `[...]` nesting.
+        def split_type_list(text)
+          result = []
+          depth = 0
+          current = +""
+
+          text.each_char do |char|
+            case char
+            when "<", "{", "(", "["
+              depth += 1
+              current << char
+            when ">", "}", ")", "]"
+              depth -= 1 if depth > 0
+              current << char
+            when ","
+              if depth.zero?
+                result << current.strip unless current.strip.empty?
+                current = +""
+              else
+                current << char
+              end
+            else
+              current << char
+            end
+          end
+
+          result << current.strip unless current.strip.empty?
+          result
         end
 
         def add_method_directive(doc, tag)

@@ -75,6 +75,13 @@ module RubyLsp
         def constant_candidates(prefix, nesting)
           raise NotImplementedError
         end
+
+        # Returns every method, attribute, namespace and constant definition the host has indexed, as `Definition`
+        # structs. Used to collect macro and domain directives without re-parsing files (FR-M7-01/02).
+        # Implementations may skip comments when `include_comments` is false and must never raise.
+        def all_definitions(include_comments: true)
+          raise NotImplementedError
+        end
       end
     end
   end

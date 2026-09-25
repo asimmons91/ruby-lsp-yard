@@ -1,0 +1,11 @@
+# The fake gem the collection lockfile points at.
+class FixtureCollectionGem
+  def collection_method: () -> String
+end
+
+module FixtureProject
+  # A class that also carries YARD docs in the fixture project; RBS wins (D5).
+  class Animal
+    def speak: (String) -> Integer
+  end
+end
