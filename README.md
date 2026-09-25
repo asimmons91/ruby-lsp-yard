@@ -1,67 +1,35 @@
 # Ruby LSP YARD
 
 A [Ruby LSP](https://shopify.github.io/ruby-lsp/) add-on that treats YARD `@param`/`@return` tags as type
-annotations, so completion, hover, signature help and go to definition work in untyped Ruby codebases that
-carry thorough YARD documentation.
+annotations, so completion, hover and go to definition work in untyped Ruby codebases that carry thorough YARD
+documentation. Core and standard library signatures come from RBS, and YARD, RBS and `rbs-inline` types are
+resolved through one shared signature store.
 
-## Status
+## Features
 
-**M0 (foundation), M1 (YARD parsing, signature store, hover), M2 (inference, completion, definition), M3
-(core/stdlib types, generics, gem caching), M4 (YARD authoring), M5 (YARD diagnostics), M6 (Rubydex
-backend) and M7 (advanced directives and ecosystem compatibility) are complete.** The
-add-on reads YARD `@param` and `@return` tags through the `yard` gem's docstring parser and infers receiver types
-from literals, constants, `self`, method parameters, local and instance variable assignments, `Foo.new`, call
-chains, unions, duck types and blocks. Core and stdlib signatures come from RBS, generic type variables are
-substituted at the call site, and YARD comments in dependency gems are cached on disk. Inside comments,
-completion helps write tags, types and parameters, hover and go to definition work on type names, and a code
-action inserts a comment skeleton. Diagnostics report broken or inconsistent YARD documentation with configurable
-severities and quick fixes. DSL-heavy code is supported through `@!macro` expansions and `@!domain` completion,
-and Solargraph users get `.solargraph.yml` domains and inline `# @type [Foo]` annotations. `rbs collection`
-signatures and `rbs-inline` (`#:`/`@rbs`) comments act as additional RBS sources. The add-on runs on Ruby LSP
-0.26 (`RubyIndexer`) and 0.27 (`Rubydex`) through the same Indexer Adapter. See
-[`docs/requirements_v1.md`](docs/requirements_v1.md) for the full plan.
+- **Type-aware completion, hover and go to definition** driven by YARD tags, with typed signatures, docstring
+  summaries and ancestor-aware ranking.
+- **Inference** from literals, constants, `self`, method parameters, local and instance variable assignments,
+  `Foo.new`, call chains, unions, duck types and blocks.
+- **RBS core and stdlib types**, including generics substituted at the call site; YARD comments in dependency
+  gems are parsed lazily and cached on disk.
+- **YARD authoring**: tag, directive, type and parameter completion inside comments, hover and go to definition
+  on type names, and a code action that inserts a comment skeleton.
+- **Diagnostics** for broken or inconsistent YARD documentation, with configurable severities and quick fixes.
+- **DSL support** through `@!macro` expansions and `@!domain` completion.
+- **Solargraph compatibility**: `.solargraph.yml` domains and inline `# @type [Foo]` annotations.
+- **Extra RBS sources**: `rbs collection` and `rbs-inline` (`#:`/`@rbs`) signatures.
+- **Both Ruby LSP indexers**: works on Ruby LSP 0.26 (`RubyIndexer`) and 0.27 (`Rubydex`) through the same
+  indexer adapter.
 
-Known gaps:
-
-- Diagnostics are not auto-detected by Ruby LSP (add-on linters are not). Users must list `"yard"` in
-  `rubyLsp.linters`; without it the add-on activates but no diagnostics run.
-- Quick fixes and the comment skeleton rely on the version-guarded code-action patch, so they require
-  `enableAuthoring` as well as `enableDiagnostics`.
-- `YARD/MissingParam`, `YARD/MissingReturn`, `YARD/ArgumentTypeMismatch` and `YARD/ReturnTypeMismatch` are off by
-  default (the light type checks are conservative and opt-in).
-- Signature help has no add-on hook in Ruby LSP (`Requests::SignatureHelp` ignores add-ons in both 0.26 and 0.27),
-  so the `enableSignatureHelp` setting is reserved until an upstream hook exists or a later milestone patches it.
-- Inlay hints have no add-on hook either (`Requests::InlayHints` ignores add-ons in both versions), so
-  `enableInlayHints` is reserved and FR-M2-20 is descoped until a hook appears.
-- Ruby LSP only target-hovers `CallNode` and the other node types in `Listeners::Hover::ALLOWED_TARGETS`, which
-  excludes `def` nodes, so definitions are not enriched.
-- Comment authoring is a version-guarded patch (D3) and only activates on the Ruby LSP versions listed in
-  `lib/ruby_lsp_yard/authoring/patch.rb`; any other version disables it with one warning while the rest of the
-  add-on keeps working. Inline `@type` annotations are read through the same patch, so they are inactive there too.
-- The per-file Sorbet policy in D5 cannot be applied because the completion and definition hooks do not receive the
-  file's Sorbet level.
-- Named macros defined only inside dependency gems are not discovered for invocation in workspace docstrings;
-  attach macros still resolve through the index. Macro-generated methods reflect saved files (the current buffer
-  is used for the document being edited only where inference runs on it).
-- `.solargraph.yml` is not covered by Ruby LSP's `**/*.rb` file watcher, so changes are picked up when the
-  add-on re-checks the file (mtime) rather than immediately. `require` hints are read but informational: the host
-  index decides what is available.
-- `rbs-inline` support follows the `rbs-inline` gem's parser output, so undocumented corners of that prototype
-  syntax (e.g. non-`def` DSLs) are not interpreted.
-- RBS intersections are approximated as unions and records as hashes, and rbs gem signatures are not navigable
-  targets (go to definition for core methods still points at the `rbs` gem's `.rbs` files through Ruby LSP).
-
-## Requirements
+## Prerequisites
 
 - Ruby >= 3.4
-- Ruby LSP 0.26.x (`RubyIndexer`) or 0.27 (`Rubydex`; the 0.27 CI leg pins the tested prerelease, currently
-  `0.27.0.beta5`)
-- `yard` >= 0.9 (`~> 0.9`) is installed as a runtime dependency for docstring parsing only; the Registry,
-  `yardoc` and HTML generation are never used
-- `rbs` >= 4.0 (`~> 4.0`) is installed as a runtime dependency for core/stdlib signatures; the RBS environment is
-  built in a background thread and never blocks requests
-- `rbs-inline` (`~> 0.14`) is installed as a runtime dependency for `#:`/`@rbs` annotations (FR-M7-04); the
-  tighter `rbs ~> 4.0` range comes from that dependency
+- Ruby LSP 0.26.x (`RubyIndexer`) or 0.27.x (`Rubydex`); the supported range is `< 0.28.0`, and the add-on is
+  skipped with a warning outside of it
+- The runtime dependencies (`yard ~> 0.9`, `rbs ~> 4.0` and `rbs-inline ~> 0.14`) are installed with the gem.
+  `yard` is used for docstring parsing only: its Registry, `yardoc` and HTML generation are never used.
+- The RBS environment is built in a background thread and never blocks requests.
 
 ## Installation
 
@@ -74,10 +42,9 @@ end
 ```
 
 Run `bundle install` and restart the language server. Ruby LSP discovers the add-on automatically and lists it
-as `Ruby LSP YARD`. If the installed Ruby LSP version is outside the supported range, the add-on is skipped
-with a warning and the rest of Ruby LSP keeps working.
+as `Ruby LSP YARD`.
 
-## Settings
+## Configuration
 
 Settings live under `rubyLsp.addonSettings`, keyed by the add-on's settings key (`rubyLspYard`). For VS Code:
 
@@ -92,22 +59,22 @@ Settings live under `rubyLsp.addonSettings`, keyed by the add-on's settings key 
 }
 ```
 
-| Setting | Default | Gates |
+| Setting | Default | Description |
 |---|---|---|
 | `enableCompletion` | `true` | Type-aware method completion |
 | `enableHover` | `true` | Documented types in hover |
-| `enableSignatureHelp` | `true` | Reserved: no add-on hook in Ruby LSP 0.26 (see Status) |
+| `enableSignatureHelp` | `true` | Reserved: no add-on hook in the supported Ruby LSP versions |
 | `enableDefinition` | `true` | Go to definition from YARD types |
-| `enableInlayHints` | `false` | Reserved: no add-on hook in Ruby LSP 0.26 (see Status) |
-| `enableDiagnostics` | `true` | YARD diagnostics (M5); also requires `"yard"` in `rubyLsp.linters` |
+| `enableInlayHints` | `false` | Reserved: no add-on hook in the supported Ruby LSP versions |
+| `enableDiagnostics` | `true` | YARD diagnostics; also requires `"yard"` in `rubyLsp.linters` |
 | `diagnosticRules` | `{}` | Per-rule severities (`"error"`, `"warning"`, `"info"`, `"hint"`) or `false`/`"off"` to disable a rule |
-| `enableAuthoring` | `true` | YARD comment completion and skeletons (M4), and diagnostics quick fixes |
+| `enableAuthoring` | `true` | YARD comment completion and skeletons, and diagnostics quick fixes |
 | `enableSnippets` | `true` | Snippet placeholders in comment completion (`false` inserts plain text) |
 | `enableCoreTypes` | `true` | RBS core/stdlib signatures, `rbs collection` and generics |
-| `enableMacros` | `true` | `@!macro` expansion at DSL call sites (M7) |
-| `enableDomains` | `true` | `@!domain` and `.solargraph.yml` domains in implicit-`self` completion (M7) |
-| `enableSolargraph` | `true` | Reading `.solargraph.yml` (M7) |
-| `enableInlineTypes` | `true` | `rbs-inline` `#:`/`@rbs` annotations (M7) |
+| `enableMacros` | `true` | `@!macro` expansion at DSL call sites |
+| `enableDomains` | `true` | `@!domain` and `.solargraph.yml` domains in implicit-`self` completion |
+| `enableSolargraph` | `true` | Reading `.solargraph.yml` |
+| `enableInlineTypes` | `true` | `rbs-inline` `#:`/`@rbs` annotations |
 | `logLevel` | `"info"` | One of `debug`, `info`, `warn`, `error` |
 | `debugInference` | `false` | Logs how inference reached each result |
 
@@ -115,9 +82,13 @@ Feature toggles are read during activation; invalid values fall back to the defa
 required at all. Comment completion and skeletons require `enableAuthoring`; comment hover additionally requires
 `enableHover` and comment definition `enableDefinition`.
 
+Because add-ons cannot register trigger characters, `[` does not open completion by itself; type completion
+needs Ctrl+Space. VS Code additionally disables as-you-type suggestions inside comments by default, so turn on
+`editor.quickSuggestions.comments` (or press Ctrl+Space) to see suggestions as you type.
+
 ## Diagnostics
 
-Ruby LSP 0.26 runs add-on linters only when the user lists them, so diagnostics need one extra setting:
+Ruby LSP does not auto-detect add-on linters, so diagnostics need one extra setting:
 
 ```json
 {
@@ -190,38 +161,6 @@ is left to Ruby LSP itself so the two responses do not duplicate each other.
 Methods whose docs only exist behind a `@!method`, `@!attribute` or `@!parse` directive are resolved too, as
 are docstrings inherited through `include`, `extend` and superclasses and YARD `(see Foo#bar)` references.
 
-## Inference
-
-Receiver types come from YARD tags and code (requirements FR-M2-01..13): literals, constants, `self` (including
-`class << self`), `@param` tags, local variable assignments before the cursor, instance variables typed by
-attribute docs or class assignments, `Foo.new` (respecting a documented `self.new`), call chains with
-`@return [self]`, `@yieldparam` for block parameters, unions and `#duck` types. Inference stops after a 20 ms
-budget or 8 chained calls and degrades to Ruby LSP's own behavior rather than guessing; `nil` is dropped from
-unions and `Object` is treated as unknown (D7).
-
-## Core and stdlib types
-
-Core and stdlib signatures come from RBS (FR-M3-01). The environment (core plus every stdlib library shipped by
-the `rbs` gem) is built in a background thread at activation, so the server keeps answering requests while it
-loads; until it is ready, inference falls back to YARD and Ruby LSP. Where RBS and YARD both describe a method,
-RBS wins (D5) — for example when a project reopens a core class with YARD docs.
-
-Generics are substituted at the call site (FR-M3-02): `[1, 2].first` is `Integer`, `"a,b".split(",")` is
-`Array<String>`, and `"a,b".split(",").map(&:strip)` is `Array<String>` (FR-M3-03 infers the block's return
-type; both block bodies and `&:symbol` blocks are supported). `hash.each { |k, v| }` types both destructured
-block parameters from the `Hash[K, V]#each` block signature. RBS interfaces such as `_ToS` become duck types,
-and RBS aliases are expanded with a depth cap.
-
-## Dependency gems
-
-YARD comments in bundled gems are read lazily, the first time a method in them is resolved, and the built
-signatures are persisted to a disk cache at `~/.cache/ruby-lsp-yard/<schema>/<gem>-<version>.bin` (FR-M3-05,
-D9). The cache is shared across projects, keyed by gem name and version, and a change to `Gemfile.lock`
-invalidates it. Writes are batched (the first signature for a gem is written immediately, later ones at most
-every 32 writes or 2 seconds, plus on shutdown), and caching is independent of the `enableCoreTypes` setting.
-Gems excluded from Ruby LSP's own indexing never reach the store, so they are excluded here too (FR-M3-06).
-Loading `rbs collection` signatures (FR-M3-07) is deferred to M7.
-
 ## Completion
 
 After `recv.`, completion offers the methods of the inferred type. Items carry the typed parameter list and
@@ -239,42 +178,64 @@ chains — go to definition jumps to the definitions of `m` on the receiver's an
 modules. When the add-on knows the receiver, its precise targets replace Ruby LSP's fallback of listing every
 method with that name; when it does not, the host response is left untouched.
 
-## YARD authoring
+## Comment authoring
 
-Inside a YARD comment, the add-on offers tag, directive, type and parameter completion (FR-M4-01..05). Typing
-`# @ret` and accepting `@return` produces `# @return [Type]` with the type placeholder selected. `@param`
-suggestions are generated from the definition below and skip parameters that already have a tag; `@yield*` is
-only suggested for methods that yield or take a `&block`, and `@raise` is prefilled with the class of the first
-`raise SomeError` in the body. Inside `[...]`, constants come from the workspace index, resolved relative to the
-definition's nesting, alongside YARD's special names and snippets for `Array<T>`, `Hash{K => V}`, `Tuple(a, b)`
-and `Class<T>`.
+Inside a YARD comment, the add-on offers tag, directive, type and parameter completion. Typing `# @ret` and
+accepting `@return` produces `# @return [Type]` with the type placeholder selected. `@param` suggestions are
+generated from the definition below and skip parameters that already have a tag; `@yield*` is only suggested for
+methods that yield or take a `&block`, and `@raise` is prefilled with the class of the first `raise SomeError` in
+the body. Inside `[...]`, constants come from the workspace index, resolved relative to the definition's
+nesting, alongside YARD's special names and snippets for `Array<T>`, `Hash{K => V}`, `Tuple(a, b)` and
+`Class<T>`.
 
-Because add-ons cannot register trigger characters, `[` does not open completion by itself; type completion
-needs Ctrl+Space. VS Code additionally disables as-you-type suggestions inside comments by default, so turn on
-`editor.quickSuggestions.comments` (or press Ctrl+Space) to see suggestions as you type (FR-M4-07).
+Hovering a type name inside a comment shows that class's documentation, and go to definition jumps to it. A code
+action on an undocumented `def` inserts a full comment skeleton — a summary placeholder, one `@param` per
+parameter, `@yield*` when the method yields and `@return` — with types prefilled from inherited or overridden
+documentation when available.
 
-Hovering a type name inside a comment shows that class's documentation, and go to definition jumps to it
-(FR-M1-14, FR-M4-P6). A code action on an undocumented `def` inserts a full comment skeleton — a summary
-placeholder, one `@param` per parameter, `@yield*` when the method yields and `@return` — with types prefilled
-from inherited or overridden documentation when available (FR-M4-06).
+Comment completion uses snippet placeholders when the editor reports snippet support; Ruby LSP applies client
+capabilities before add-ons load, so the capability is usually unknown and the add-on assumes support. Clients
+without snippets support can set `enableSnippets` to `false` to insert plain text.
 
-Comment support is a version-guarded patch (D3). It is only applied to the Ruby LSP versions listed in
-`lib/ruby_lsp_yard/authoring/patch.rb`; on any other version the add-on logs one warning and leaves Ruby LSP's
-behavior untouched. Comment completion uses snippet placeholders when the editor reports snippet support; Ruby
-LSP 0.26 applies client capabilities before add-ons load, so the capability is usually unknown and the add-on
-assumes support. Clients without snippets support can set `enableSnippets` to `false` to insert plain text
-(NFR-C3).
+## Inference
+
+Receiver types come from YARD tags and code: literals, constants, `self` (including `class << self`), `@param`
+tags, local variable assignments before the cursor, instance variables typed by attribute docs or class
+assignments, `Foo.new` (respecting a documented `self.new`), call chains with `@return [self]`, `@yieldparam`
+for block parameters, unions and `#duck` types. Inference stops after a 20 ms budget or 8 chained calls and
+degrades to Ruby LSP's own behavior rather than guessing; `nil` is dropped from unions and `Object` is treated
+as unknown.
+
+## Core, stdlib and dependency gem types
+
+Core and stdlib signatures come from RBS. The environment (core plus every stdlib library shipped by the `rbs`
+gem) is built in a background thread at activation, so the server keeps answering requests while it loads; until
+it is ready, inference falls back to YARD and Ruby LSP. Where RBS and YARD both describe a method, RBS wins — for
+example when a project reopens a core class with YARD docs.
+
+Generics are substituted at the call site: `[1, 2].first` is `Integer`, `"a,b".split(",")` is `Array<String>`,
+and `"a,b".split(",").map(&:strip)` is `Array<String>` (the block's return type is inferred; both block bodies
+and `&:symbol` blocks are supported). `hash.each { |k, v| }` types both destructured block parameters from the
+`Hash[K, V]#each` block signature. RBS interfaces such as `_ToS` become duck types, and RBS aliases are expanded
+with a depth cap.
+
+YARD comments in bundled gems are read lazily, the first time a method in them is resolved, and the built
+signatures are persisted to a disk cache at `~/.cache/ruby-lsp-yard/<schema>/<gem>-<version>.bin`. The cache is
+shared across projects, keyed by gem name and version, and a change to `Gemfile.lock` invalidates it. Writes are
+batched (the first signature for a gem is written immediately, later ones at most every 32 writes or 2 seconds,
+plus on shutdown), and caching is independent of the `enableCoreTypes` setting. Gems excluded from Ruby LSP's
+own indexing never reach the store, so they are excluded here too.
 
 ## Macros and domains
 
-`@!macro` directives are expanded into definitions (FR-M7-01). Named macros (`@!macro returnself` plus
-`@macro returnself` invocations), `[new]` macros and `[attach]` macros are supported, with YARD's positional
-interpolation: `$0`–`$N`, `${N-M}` ranges (including negative indexes), `$*` for the full DSL call and `\$` to
-escape. A macro is applied only to calls that resolve to the method where the macro was defined, so attach macros
-defined on a class method apply to subclass DSL calls, and macros are found through `include`, `extend` and
-superclasses. Macros that reference other macros expand recursively with cycle detection. Only expansions
-containing `@!method`, `@!attribute` or `@!parse` produce new methods or attributes; those definitions then flow
-into completion, hover and go to definition like indexed ones. For example:
+`@!macro` directives are expanded into definitions. Named macros (`@!macro returnself` plus `@macro returnself`
+invocations), `[new]` macros and `[attach]` macros are supported, with YARD's positional interpolation: `$0`–`$N`,
+`${N-M}` ranges (including negative indexes), `$*` for the full DSL call and `\$` to escape. A macro is applied
+only to calls that resolve to the method where the macro was defined, so attach macros defined on a class method
+apply to subclass DSL calls, and macros are found through `include`, `extend` and superclasses. Macros that
+reference other macros expand recursively with cycle detection. Only expansions containing `@!method`,
+`@!attribute` or `@!parse` produce new methods or attributes; those definitions then flow into completion, hover
+and go to definition like indexed ones. For example:
 
 ```ruby
 class Resource
@@ -290,9 +251,9 @@ end
 # Post.new.title is now typed String
 ```
 
-`@!domain` (FR-M7-02) binds a DSL namespace to a class or module: inside it, the domain's methods are offered as
+`@!domain` binds a DSL namespace to a class or module: inside it, the domain's methods are offered as
 implicit-`self` completions. `Class<X>` domains contribute `X`'s class methods, plain `X` its instance methods.
-The `.solargraph.yml` `domains` list (FR-M7-03) applies the same binding workspace-wide.
+The `.solargraph.yml` `domains` list applies the same binding workspace-wide.
 
 ## Solargraph compatibility
 
@@ -300,7 +261,7 @@ The `.solargraph.yml` `domains` list (FR-M7-03) applies the same binding workspa
 file is re-read when its modification time changes. `require` hints are informational: the host index still
 decides what is available, because the add-on does not parse required files itself.
 
-Inline `# @type [Foo]` annotations (FR-M2-13) type local and instance variable assignments:
+Inline `# @type [Foo]` annotations type local and instance variable assignments:
 
 ```ruby
 # @type [FixtureProject::Documented]
@@ -315,12 +276,12 @@ assignment's inferred type, and unions (`# @type [Foo, nil]`) are supported.
 ## rbs collection and rbs-inline
 
 When the workspace has an `rbs collection` (`rbs_collection.yaml` plus its lockfile), the loader adds the
-collection's signatures to the background RBS environment automatically (FR-M3-07). Collection signatures follow
-the same precedence as core RBS: where they and YARD both describe a method, RBS wins (D5).
+collection's signatures to the background RBS environment automatically. Collection signatures follow the same
+precedence as core RBS: where they and YARD both describe a method, RBS wins.
 
-`rbs-inline` annotations are a second source of RBS types (FR-M7-04, D5). Files that opt in with
-`# rbs_inline: enabled` have their `#:` comments and `@rbs` tags parsed lazily, and the resulting signatures
-outrank the file's own YARD comments:
+`rbs-inline` annotations are a second source of RBS types. Files that opt in with `# rbs_inline: enabled` have
+their `#:` comments and `@rbs` tags parsed lazily, and the resulting signatures outrank the file's own YARD
+comments:
 
 ```ruby
 # rbs_inline: enabled
@@ -334,14 +295,46 @@ end
 
 Set `enableInlineTypes` to `false` to ignore these annotations.
 
+## Limitations
+
+- Ruby LSP does not auto-detect add-on linters, so diagnostics only run after `"yard"` is listed in
+  `rubyLsp.linters` (see [Diagnostics](#diagnostics)).
+- Diagnostics quick fixes and the comment skeleton rely on the version-guarded code-action patch, so they
+  require `enableAuthoring` as well as `enableDiagnostics`.
+- `YARD/MissingParam`, `YARD/MissingReturn`, `YARD/ArgumentTypeMismatch` and `YARD/ReturnTypeMismatch` are off by
+  default; enable them through `diagnosticRules`.
+- Signature help has no add-on hook in the supported Ruby LSP versions (`Requests::SignatureHelp` ignores
+  add-ons), so the `enableSignatureHelp` setting is reserved until an upstream hook exists.
+- Inlay hints have no add-on hook either (`Requests::InlayHints` ignores add-ons), so `enableInlayHints` is
+  reserved.
+- Ruby LSP only target-hovers the node types in `Listeners::Hover::ALLOWED_TARGETS`, which excludes `def` nodes,
+  so definitions are not enriched.
+- Comment authoring is a version-guarded patch and only activates on the Ruby LSP versions listed in
+  `lib/ruby_lsp_yard/authoring/patch.rb`; any other version disables it with one warning while the rest of the
+  add-on keeps working. Inline `@type` annotations are read through the same patch, so they are inactive there
+  too.
+- The per-file Sorbet policy cannot be applied because the completion and definition hooks do not receive the
+  file's Sorbet level.
+- Named macros defined only inside dependency gems are not discovered for invocation in workspace docstrings;
+  attach macros still resolve through the index. Macro-generated methods reflect saved files (the current buffer
+  is used only where inference runs on it).
+- `.solargraph.yml` is not covered by Ruby LSP's `**/*.rb` file watcher, so changes are picked up when the
+  add-on re-checks the file (mtime) rather than immediately. `require` hints are read but informational: the
+  host index decides what is available.
+- `rbs-inline` support follows the `rbs-inline` gem's parser output, so undocumented corners of that syntax
+  (e.g. non-`def` DSLs) are not interpreted.
+- RBS intersections are approximated as unions and records as hashes, and `rbs` gem signatures are not
+  navigable targets (go to definition for core methods still points at the `rbs` gem's `.rbs` files through
+  Ruby LSP).
+
 ## Development
 
 ```bash
 bin/setup                                  # bundle install
 bundle exec rake                           # tests + standard (what CI runs)
 bundle exec rake test                      # tests only
-bundle exec rake corpus                    # parse the YARD comments of installed top gems (NFR-T3)
-bundle exec rake benchmark                 # inference, completion and RBS latency (NFR-P2/P3)
+bundle exec rake corpus                    # parse the YARD comments of installed top gems
+bundle exec rake benchmark                 # inference, completion and RBS latency
 BUNDLE_GEMFILE=gemfiles/ruby_lsp_0.26.gemfile bundle exec rake   # a specific ruby-lsp version
 BUNDLE_GEMFILE=gemfiles/ruby_lsp_0.27.gemfile bundle exec rake   # the Rubydex backend
 ```
