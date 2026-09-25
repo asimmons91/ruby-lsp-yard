@@ -1,5 +1,7 @@
 ## [Unreleased]
 
+- **Breaking:** add-on settings now live under the `rubyLspYard` key in `rubyLsp.addonSettings` (previously the
+  display name `Ruby LSP YARD`); the display name itself is unchanged
 - M7: expand `@!macro` DSL definitions — named, `[new]` and `[attach]` macros, YARD positional interpolation (`$0`,
   `$1`, ranges, `$*`, escaping), inheritance through `include`/`extend`/superclasses, recursive expansion with
   cycle detection, and only `@!method`/`@!attribute`/`@!parse` producing definitions (FR-M7-01)

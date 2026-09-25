@@ -79,12 +79,12 @@ with a warning and the rest of Ruby LSP keeps working.
 
 ## Settings
 
-Settings live under `rubyLsp.addonSettings`, keyed by the add-on name. For VS Code:
+Settings live under `rubyLsp.addonSettings`, keyed by the add-on's settings key (`rubyLspYard`). For VS Code:
 
 ```json
 {
   "rubyLsp.addonSettings": {
-    "Ruby LSP YARD": {
+    "rubyLspYard": {
       "logLevel": "info",
       "debugInference": false
     }
@@ -123,7 +123,7 @@ Ruby LSP 0.26 runs add-on linters only when the user lists them, so diagnostics 
 {
   "rubyLsp.linters": ["rubocop", "yard"],
   "rubyLsp.addonSettings": {
-    "Ruby LSP YARD": {
+    "rubyLspYard": {
       "enableDiagnostics": true,
       "diagnosticRules": {
         "YARD/MissingParam": "warning",
