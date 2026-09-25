@@ -58,6 +58,7 @@ module RubyLsp
         # FR-M4-P1/P3: completion inside a comment returns the authoring items; every other request passes through.
         module CompletionPatch
           def initialize(document, global_state, params, sorbet_level, dispatcher)
+            @yard_document = document
             items = yard_comment_items(document, params)
             if items
               @yard_comment_items = items
@@ -70,7 +71,8 @@ module RubyLsp
           def perform
             return @yard_comment_items if defined?(@yard_comment_items) && @yard_comment_items
 
-            super
+            document = defined?(@yard_document) ? @yard_document : nil
+            Registry.with_document(document) { super }
           end
 
           private
@@ -99,6 +101,7 @@ module RubyLsp
         # FR-M4-P6: hover on a type name inside a comment shows the class's documentation.
         module HoverPatch
           def initialize(document, global_state, position, dispatcher, sorbet_level)
+            @yard_document = document
             hover = yard_comment_hover(document, position)
             if hover
               @yard_comment_hover = hover
@@ -111,7 +114,8 @@ module RubyLsp
           def perform
             return @yard_comment_hover if defined?(@yard_comment_hover) && @yard_comment_hover
 
-            super
+            document = defined?(@yard_document) ? @yard_document : nil
+            Registry.with_document(document) { super }
           end
 
           private
@@ -135,6 +139,7 @@ module RubyLsp
         # FR-M4-P6: go to definition on a type name inside a comment jumps to the class.
         module DefinitionPatch
           def initialize(document, global_state, position, dispatcher, sorbet_level)
+            @yard_document = document
             links = yard_comment_links(document, position)
             if links
               @yard_comment_links = links
@@ -147,7 +152,8 @@ module RubyLsp
           def perform
             return @yard_comment_links if defined?(@yard_comment_links) && @yard_comment_links
 
-            super
+            document = defined?(@yard_document) ? @yard_document : nil
+            Registry.with_document(document) { super }
           end
 
           private

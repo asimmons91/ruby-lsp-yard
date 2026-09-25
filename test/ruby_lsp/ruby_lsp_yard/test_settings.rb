@@ -15,9 +15,22 @@ module RubyLsp
         assert settings.enabled?(:diagnostics)
         assert settings.enabled?(:authoring)
         assert settings.enabled?(:snippets)
+        assert settings.enabled?(:macros)
+        assert settings.enabled?(:domains)
+        assert settings.enabled?(:solargraph)
+        assert settings.enabled?(:inline_types)
         refute settings.enabled?(:inlay_hints)
         refute settings.debug_inference?
         assert_equal :info, settings.log_level
+      end
+
+      def test_m7_features_can_be_disabled
+        settings = Settings.new({enableMacros: false, enableDomains: false, enableSolargraph: false, enableInlineTypes: false})
+
+        refute settings.enabled?(:macros)
+        refute settings.enabled?(:domains)
+        refute settings.enabled?(:solargraph)
+        refute settings.enabled?(:inline_types)
       end
 
       def test_reads_symbol_and_string_keys

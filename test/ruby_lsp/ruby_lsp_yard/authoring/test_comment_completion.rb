@@ -72,7 +72,7 @@ module RubyLsp
           items = items_for("# @!\ndef foo; end\n", "@!")
 
           assert_equal(
-            ["@!method", "@!attribute", "@!parse", "@!visibility"],
+            ["@!method", "@!attribute", "@!parse", "@!visibility", "@!macro", "@!domain"],
             items.map(&:label)
           )
         end

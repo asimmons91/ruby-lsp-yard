@@ -4,6 +4,7 @@ require "prism"
 
 require_relative "../host_context"
 require_relative "../types"
+require_relative "annotations"
 require_relative "budget"
 require_relative "resolution"
 require_relative "scope_index"
@@ -25,6 +26,21 @@ module RubyLsp
           @log = log
           @budget_ms = budget_ms
           @debug = debug
+          @document = nil
+          @annotations = nil
+        end
+
+        # FR-M2-13: makes the live document available for inline `# @type [Foo]` annotations while a request runs.
+        # The patched host requests and the diagnostics linter call this; inference outside a request sees no
+        # document and falls back to code inference.
+        def with_document(document)
+          previous = @document
+          @document = document
+          @annotations = nil
+          yield
+        ensure
+          @document = previous
+          @annotations = nil
         end
 
         # The `[owner, singleton]` pair of the receiver of the call in `node_context`, or nil when it cannot be
@@ -216,8 +232,9 @@ module RubyLsp
           return block_param if usable?(block_param)
 
           scope ||= ScopeIndex.new(ctx, log: @log)
-          types = scope.assignment_value_nodes(name, node.location.start_offset).filter_map do |value|
-            type = infer(value, ctx, budget, scope, depth + 1, bindings)
+          types = scope.assignment_entries(name, node.location.start_offset).filter_map do |_offset, value, write_node|
+            annotated = annotation_type(write_node, ctx)
+            type = annotated || infer(value, ctx, budget, scope, depth + 1, bindings)
             type if usable?(type)
           end
           types.empty? ? Types::UNKNOWN : Types.union(types)
@@ -280,8 +297,9 @@ module RubyLsp
           end
 
           scope ||= ScopeIndex.new(ctx, log: @log)
-          scope.ivar_value_nodes(name).each do |value|
-            type = infer(value, ctx, budget, scope, depth + 1, bindings)
+          scope.ivar_entries(name).each do |_offset, value, write_node|
+            annotated = annotation_type(write_node, ctx)
+            type = annotated || infer(value, ctx, budget, scope, depth + 1, bindings)
             types << type if usable?(type)
           end
 
@@ -577,6 +595,18 @@ module RubyLsp
 
         def usable?(type)
           !type.nil? && !Types.unknown?(type) && type != Types::UNTYPED
+        end
+
+        # FR-M2-13: an inline `# @type [Foo]` above an assignment overrides the inferred value type.
+        def annotation_type(node, ctx)
+          return nil unless @document
+
+          @annotations ||= Annotations.new(@document, @adapter, log: @log)
+          nesting = HostContext.owner(ctx).split("::").reject(&:empty?)
+          @annotations.type_for(node, nesting: nesting)
+        rescue => e
+          log_failure("annotation_type", e)
+          nil
         end
 
         def instance(name, type_args = [])

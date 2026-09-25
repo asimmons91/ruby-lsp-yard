@@ -3,6 +3,7 @@
 require "test_helper"
 require "tmpdir"
 require "ruby_lsp_yard/gems"
+require "ruby_lsp_yard/rbs"
 require "ruby_lsp_yard/signature_store"
 
 module RubyLsp
@@ -331,7 +332,33 @@ module RubyLsp
         FileUtils.remove_entry(root) if root && File.directory?(root)
       end
 
+      def test_rbs_collection_wins_over_yard
+        loader = Rbs::Loader.new(background: false, workspace_path: collection_path)
+        loader.start
+        store = SignatureStore.new(Indexer.wrap(index), rbs: Rbs::Source.new(loader))
+
+        signature = store.lookup(ANIMAL, "speak")
+
+        refute_nil signature
+        assert_equal Types::Instance.new("Integer"), signature.return_types
+        assert_equal :rbs, signature.source
+      end
+
+      def test_rbs_inline_annotations_win_over_yard
+        store = SignatureStore.new(Indexer.wrap(index), inline: Rbs::Inline.new(@adapter))
+
+        signature = store.lookup("FixtureProject::InlineThing", "typed")
+
+        refute_nil signature
+        assert_equal :rbs, signature.source
+        assert_equal Types::Instance.new("Symbol"), signature.return_types
+      end
+
       private
+
+      def collection_path
+        File.expand_path("../../fixtures/rbs_collection", __dir__)
+      end
 
       def rbs_store
         SignatureStore.new(Indexer.wrap(index), rbs: self.class.rbs_source)

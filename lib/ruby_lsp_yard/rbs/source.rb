@@ -4,6 +4,7 @@ require "rbs"
 
 require_relative "../signature"
 require_relative "converter"
+require_relative "function_signature"
 
 module RubyLsp
   module Yard
@@ -119,60 +120,15 @@ module RubyLsp
         end
 
         def params_from_function(function)
-          return [] unless function.respond_to?(:required_positionals)
-
-          params = []
-          index = 0
-
-          function.required_positionals.each do |param|
-            params << positional_param(param, :required, index)
-            index += 1
-          end
-          function.optional_positionals.each do |param|
-            params << positional_param(param, :optional, index)
-            index += 1
-          end
-          if (rest = function.rest_positionals)
-            params << Signature::Param.new(name: rest.name || :"arg#{index}", kind: :rest, types: converter.convert(rest.type))
-            index += 1
-          end
-          function.trailing_positionals.each do |param|
-            params << positional_param(param, :required, index)
-            index += 1
-          end
-          function.required_keywords.each do |keyword, param|
-            params << Signature::Param.new(name: keyword, kind: :keyword, types: converter.convert(param.type))
-          end
-          function.optional_keywords.each do |keyword, param|
-            params << Signature::Param.new(name: keyword, kind: :keyword_optional, types: converter.convert(param.type))
-          end
-          if (rest = function.rest_keywords)
-            params << Signature::Param.new(
-              name: rest.name || :keyword_rest,
-              kind: :keyword_rest,
-              types: converter.convert(rest.type)
-            )
-          end
-
-          params
-        end
-
-        def positional_param(param, kind, index)
-          Signature::Param.new(name: param.name || :"arg#{index}", kind: kind, types: converter.convert(param.type))
+          FunctionSignature.params_from_function(function, converter)
         end
 
         def yield_info(method_type)
-          block = method_type.block
-          return [[], []] unless block
-
-          function = block.type
-          [params_from_function(function), [converter.convert(function.return_type)]]
+          FunctionSignature.yield_info(method_type, converter)
         end
 
         def method_type_params(method_type)
-          return [] unless method_type.respond_to?(:type_param_names)
-
-          method_type.type_param_names.map(&:to_sym)
+          FunctionSignature.method_type_params(method_type)
         end
 
         def normalize_owner(owner, singleton)

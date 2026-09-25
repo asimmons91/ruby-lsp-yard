@@ -195,6 +195,65 @@ module RubyLsp
           assert_equal "private", directive.text
         end
 
+        def test_parses_macro_definition
+          doc = extract(<<~DOC)
+            @!macro [attach] property
+              @!method $1(value)
+                @return [$2] the $1
+          DOC
+
+          directive = doc.directives.first
+          assert_equal :macro, directive.kind
+          assert_equal "property", directive.name
+          assert_equal ["attach"], directive.types
+          assert_includes directive.text, "@!method $1(value)"
+        end
+
+        def test_parses_macro_invocation
+          doc = extract("@macro returnself")
+
+          directive = doc.directives.first
+          assert_equal :macro, directive.kind
+          assert_equal "returnself", directive.name
+          assert_empty directive.text
+        end
+
+        def test_parses_anonymous_macro
+          doc = extract(<<~DOC)
+            @!macro
+              @return [self]
+          DOC
+
+          directive = doc.directives.first
+          assert_equal :macro, directive.kind
+          assert_empty directive.name
+          assert_includes directive.text, "@return [self]"
+        end
+
+        def test_parses_domain_directive
+          doc = extract(<<~DOC)
+            Binds the Sinatra DSL.
+            @!domain Class<Sinatra::Base>
+            @!domain Sinatra::Helpers
+          DOC
+
+          domains = doc.directives.select { |directive| directive.kind == :domain }
+          assert_equal [["Class<Sinatra::Base>"], ["Sinatra::Helpers"]], domains.map(&:types)
+        end
+
+        def test_splits_domain_lists_on_top_level_commas
+          doc = extract("@!domain Class<Sinatra::Base>, Sinatra::Helpers, Class<Hash>")
+
+          domains = doc.directives.select { |directive| directive.kind == :domain }
+          assert_equal [["Class<Sinatra::Base>", "Sinatra::Helpers", "Class<Hash>"]], domains.map(&:types)
+        end
+
+        def test_domain_directive_without_types_is_ignored
+          doc = extract("@!domain")
+
+          assert_empty doc.directives.select { |directive| directive.kind == :domain }
+        end
+
         def test_unknown_tags_are_ignored
           doc = extract("@param [String] loose_name\n@totally_unknown value")
 

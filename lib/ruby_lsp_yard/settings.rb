@@ -14,7 +14,11 @@ module RubyLsp
         diagnostics: "enableDiagnostics",
         authoring: "enableAuthoring",
         snippets: "enableSnippets",
-        core_types: "enableCoreTypes"
+        core_types: "enableCoreTypes",
+        macros: "enableMacros",
+        domains: "enableDomains",
+        solargraph: "enableSolargraph",
+        inline_types: "enableInlineTypes"
       }.freeze
 
       BOOLEAN_DEFAULTS = {
@@ -27,6 +31,10 @@ module RubyLsp
         "enableAuthoring" => true,
         "enableSnippets" => true,
         "enableCoreTypes" => true,
+        "enableMacros" => true,
+        "enableDomains" => true,
+        "enableSolargraph" => true,
+        "enableInlineTypes" => true,
         "debugInference" => false
       }.freeze
 

@@ -61,6 +61,16 @@ module RubyLsp
 
             current.snippets?
           end
+
+          # FR-M2-13: inline `# @type [Foo]` annotations need the live document. The patched requests wrap their
+          # `perform` in this so inference can read annotations from unsaved buffers; without the patch (or outside a
+          # request) inference sees no document.
+          def with_document(document)
+            inference = current&.inference
+            return yield unless inference
+
+            inference.with_document(document) { yield }
+          end
         end
       end
     end

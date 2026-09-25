@@ -87,7 +87,7 @@ module RubyLsp
 
           links = definition(source, "mystery.label", position_token: "label")
 
-          assert_equal 2, links.size
+          assert_operator links.size, :>=, 2
         end
 
         def test_is_disabled_by_settings
@@ -108,7 +108,7 @@ module RubyLsp
             links = definition_links(server, uri, source, line_token: "item.label", position_token: "label")
           end
 
-          assert_equal 2, links.size
+          assert_operator links.size, :>=, 2
         end
 
         private

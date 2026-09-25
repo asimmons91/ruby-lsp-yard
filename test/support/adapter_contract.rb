@@ -247,4 +247,24 @@ module AdapterContract
 
     assert_equal [uri], received
   end
+
+  def test_all_definitions_include_methods_with_comments
+    definitions = adapter.all_definitions
+    speak = definitions.find { |definition| definition.owner == ANIMAL && definition.name == "speak" }
+
+    refute_nil speak
+    assert_equal :method, speak.kind
+    assert_includes speak.comments, "@param suffix [String]"
+  end
+
+  def test_all_definitions_can_omit_comments
+    definitions = adapter.all_definitions(include_comments: false)
+
+    refute_empty definitions
+    assert(definitions.all? { |definition| definition.comments.nil? })
+  end
+
+  def test_all_definitions_never_raise
+    assert_kind_of Array, adapter.all_definitions
+  end
 end

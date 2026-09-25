@@ -43,8 +43,11 @@ Gem::Specification.new do |spec|
   spec.add_dependency "yard", "~> 0.9"
 
   # RBS core/stdlib signatures for M3 (FR-M3-01). Ruby LSP already depends on `rbs`; depending on it explicitly
-  # keeps the add-on working if that changes.
-  spec.add_dependency "rbs", ">= 3", "< 5"
+  # keeps the add-on working if that changes. `rbs-inline` requires `rbs ~> 4.0`.
+  spec.add_dependency "rbs", "~> 4.0"
+
+  # FR-M7-04: `rbs-inline` (`#:` / `@rbs`) comments are a second source of RBS types.
+  spec.add_dependency "rbs-inline", "~> 0.14"
 
   # For more information and examples about making a new gem, check out our
   # guide at: https://guides.rubygems.org/make-your-own-gem/

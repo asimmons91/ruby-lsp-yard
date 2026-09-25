@@ -78,6 +78,14 @@ module RubyLsp
           log_failure("constant_candidates(#{prefix.inspect}, #{nesting.inspect})", e)
         end
 
+        def all_definitions(include_comments: true)
+          @index.names.flat_map do |name|
+            map_entries(Array(@index[name]), include_comments: include_comments)
+          end
+        rescue => e
+          log_failure("all_definitions", e)
+        end
+
         private
 
         # RubyIndexer stores singleton methods on a synthetic namespace named `Foo::<Class:Foo>`.

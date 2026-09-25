@@ -47,6 +47,29 @@ module RubyLsp
 
           refute loader.ready?
         end
+
+        def test_loads_an_rbs_collection_from_the_workspace
+          loader = Loader.new(background: false, workspace_path: collection_path)
+          loader.start
+
+          assert loader.ready?
+          assert loader.environment.class_decls.key?(::RBS::TypeName.parse("::FixtureCollectionGem"))
+          assert loader.environment.class_decls.key?(::RBS::TypeName.parse("::FixtureProject::Animal"))
+        end
+
+        def test_ignores_a_missing_collection
+          loader = Loader.new(background: false, workspace_path: File.expand_path("../../..", __dir__))
+          loader.start
+
+          assert loader.ready?
+          refute loader.environment.class_decls.key?(::RBS::TypeName.parse("::FixtureCollectionGem"))
+        end
+
+        private
+
+        def collection_path
+          File.expand_path("../../../fixtures/rbs_collection", __dir__)
+        end
       end
     end
   end
