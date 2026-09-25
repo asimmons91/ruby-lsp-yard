@@ -74,7 +74,7 @@ module RubyLsp
         end
 
         def interface_method_names(name)
-          entry = @environment&.interface_decls&.[](name)
+          entry = @environment&.interface_decls&.[](absolute(name))
           return [] unless entry
 
           entry.decl.members.filter_map do |member|
@@ -100,9 +100,15 @@ module RubyLsp
         def convert_alias(type, depth)
           return Types::UNKNOWN if depth > MAX_DEPTH || @builder.nil?
 
-          convert(@builder.expand_alias(type.name), depth: depth + 1)
+          convert(@builder.expand_alias(absolute(type.name)), depth: depth + 1)
         rescue
           Types::UNKNOWN
+        end
+
+        # Standalone rbs-inline declarations carry relative names, while the loaded environment is keyed by absolute
+        # ones; core/stdlib aliases and interfaces are declared at the top level or under absolute namespaces.
+        def absolute(name)
+          name.absolute? ? name : name.absolute!
         end
 
         # Internal names never carry a leading `::` (the indexer adapter resolves them without one).

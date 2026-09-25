@@ -53,6 +53,52 @@ module RubyLsp
           assert_nil @inline.lookup(@uri, OWNER, "count", singleton: true)
           assert_nil @inline.lookup(@uri, OWNER, "missing")
         end
+
+        def test_resolves_core_aliases_and_interfaces_when_a_loader_is_available
+          loader = Rbs::Loader.new(background: false)
+          loader.start
+          inline = Inline.new(@adapter, loader: loader)
+
+          amount = inline.lookup(@uri, OWNER, "amount")
+          refute_nil amount
+          expected = Types.union([
+            Types::Instance.new("Integer"),
+            Types::Instance.new("Float"),
+            Types::Instance.new("Rational")
+          ])
+          assert_equal expected, amount.return_types
+
+          textual = inline.lookup(@uri, OWNER, "textual")
+          refute_nil textual
+          assert_equal Types::Duck.new(["to_s"]), textual.return_types
+        end
+
+        def test_degrades_alias_and_interface_types_without_a_loader
+          amount = @inline.lookup(@uri, OWNER, "amount")
+
+          refute_nil amount
+          assert_equal Types::UNKNOWN, amount.return_types
+
+          textual = @inline.lookup(@uri, OWNER, "textual")
+          refute_nil textual
+          assert_equal Types::UNKNOWN, textual.return_types
+        end
+
+        def test_rebuilds_cached_files_when_the_environment_becomes_ready
+          loader = Rbs::Loader.new(background: false)
+          inline = Inline.new(@adapter, loader: loader)
+
+          assert_equal Types::UNKNOWN, inline.lookup(@uri, OWNER, "amount").return_types
+
+          loader.start
+
+          expected = Types.union([
+            Types::Instance.new("Integer"),
+            Types::Instance.new("Float"),
+            Types::Instance.new("Rational")
+          ])
+          assert_equal expected, inline.lookup(@uri, OWNER, "amount").return_types
+        end
       end
     end
   end

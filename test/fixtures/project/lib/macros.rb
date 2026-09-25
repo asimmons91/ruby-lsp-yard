@@ -85,6 +85,29 @@ module FixtureProject
     label :tag, String
   end
 
+  # A named macro that injects its own directive.
+  class Audit
+    # @!macro [new] audit_timestamp
+    #   @!attribute [r] created_at
+    #     @return [Time]
+    def self.timestamped
+      nil
+    end
+  end
+
+  # An attached macro whose data invokes a named macro.
+  class Article
+    # @!macro [attach] audited
+    #   @macro audit_timestamp
+    #   @!method $1
+    #     @return [$2]
+    def self.audited(name, type)
+      nil
+    end
+
+    audited :slug, String
+  end
+
   # Mutually recursive macros terminate expansion instead of looping.
   class Cyclic
     # @!macro [new] cycle_a

@@ -136,6 +136,7 @@ module RubyLsp
 
           macros.each do |data|
             expanded = @expander.expand(data, params: params, source: source_line)
+            expanded = @catalog.expand_comments(expanded, method_name: name)
             raw = @extractor.extract(expanded)
             @builder.apply_directives(entries, owner: owner, raw: raw, uri: uri, location: location)
           end

@@ -620,8 +620,10 @@ surrounding-method shape and singleton nesting markers moved, and both are norma
   (`constant_definitions` URIs) and walking class-level calls, mirroring the diagnostics scanner. Only
   `@!method`/`@!attribute`/`@!parse` in the expansion create definitions; they are built with the shared
   `Documentation::SignatureBuilder`, which was extracted from `SignatureStore` for this purpose. Expansion
-  recurses with a visited set and an iteration cap (NFR-R3). Named macros defined only inside gems are found when
-  their target method is resolved but are not catalogued globally; this is documented in the README.
+  recurses per invocation with per-chain cycle detection and an iteration cap (NFR-R3), so a macro used twice in
+  one docstring expands twice, and attached-macro data is run through named-macro expansion before directives are
+  applied. Named macros defined only inside gems are found when their target method is resolved but are not
+  catalogued globally; this is documented in the README.
 - **`@!domain` (FR-M7-02).** YARD drops `@!domain`, so it is scanned from raw comment text and stored as a
   `:domain` raw directive. `Domains::Registry` maps a namespace to its domain type expressions (from its own
   comments and from `.solargraph.yml`), parsing them with the existing `Types::Parser` against the declaring
@@ -638,14 +640,18 @@ surrounding-method shape and singleton nesting markers moved, and both are norma
   `rbs_collection.yaml`, and — when the lockfile exists — adds the collection through
   `EnvironmentLoader#add_collection` before the environment is built. Collection signatures flow through
   `Rbs::Source`, so RBS-wins-over-YARD (D5) applies to gem methods as well as core ones. A broken collection is
-  logged and skipped.
+  logged and skipped: the loader retries without the collection, then without stdlib, then core-only, so
+  collection files that fail to parse cannot take core/stdlib signatures down with them.
 - **`rbs-inline` (FR-M7-04, D5).** `rbs-inline ~> 0.14` is a runtime dependency (which tightens the `rbs`
   constraint to `~> 4.0`). `Rbs::Inline` lazily parses files whose source contains the `rbs_inline:` magic
   comment using `RBS::Inline::Parser`/`Writer` and the standard `RBS::Parser`, converts declarations with the M3
   `Converter` (parameters and blocks via a `FunctionSignature` module shared with `Rbs::Source`), and caches per
-  path until watched files change. `SignatureStore` consults it inside `signature_from_definition`, so inline
-  signatures outrank the file's YARD comments; core RBS still answers first for core owners. The gem-cache schema
-  does not change because inline signatures are never persisted.
+  path until watched files change. `Rbs::Inline` receives the loader, so aliases and interfaces among the
+  annotations resolve against the loaded environment; because standalone inline declarations carry relative type
+  names, they are absolutized before the environment lookup. A converter built while the environment was still
+  loading is dropped together with the file cache when it becomes ready. `SignatureStore` consults it inside
+  `signature_from_definition`, so inline signatures outrank the file's YARD comments; core RBS still answers
+  first for core owners. The gem-cache schema does not change because inline signatures are never persisted.
 - **Settings and adapter surface.** `enableMacros`, `enableDomains`, `enableSolargraph` and `enableInlineTypes`
   were added (all default on, read at activation like the other feature toggles). The adapter gained
   `all_definitions`; both backends implement it and the shared contract covers it. Rubydex namespace declarations

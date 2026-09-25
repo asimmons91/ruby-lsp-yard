@@ -1,0 +1,5 @@
+# A collection signature that does not parse, so `Environment.from_loader` raises even though `add_collection`
+# accepted the lockfile.
+class FixtureCollectionGem
+  def broken: (
+end

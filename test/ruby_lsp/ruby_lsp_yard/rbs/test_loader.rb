@@ -65,10 +65,24 @@ module RubyLsp
           refute loader.environment.class_decls.key?(::RBS::TypeName.parse("::FixtureCollectionGem"))
         end
 
+        def test_falls_back_to_core_and_stdlib_when_the_collection_is_broken
+          loader = Loader.new(background: false, workspace_path: broken_collection_path)
+          loader.start
+
+          assert loader.ready?
+          assert loader.environment.class_decls.key?(::RBS::TypeName.parse("::String"))
+          assert loader.environment.class_decls.key?(::RBS::TypeName.parse("::Pathname"))
+          refute loader.environment.class_decls.key?(::RBS::TypeName.parse("::FixtureCollectionGem"))
+        end
+
         private
 
         def collection_path
           File.expand_path("../../../fixtures/rbs_collection", __dir__)
+        end
+
+        def broken_collection_path
+          File.expand_path("../../../fixtures/rbs_collection_broken", __dir__)
         end
       end
     end
