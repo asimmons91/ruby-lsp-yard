@@ -28,5 +28,15 @@ module FixtureProject
     def configure(visible:)
       nil
     end
+
+    #: () -> real
+    def amount
+      0.0
+    end
+
+    #: () -> _ToS
+    def textual
+      "x"
+    end
   end
 end

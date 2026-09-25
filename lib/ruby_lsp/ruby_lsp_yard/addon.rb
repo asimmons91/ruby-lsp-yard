@@ -207,11 +207,12 @@ module RubyLsp
         nil
       end
 
-      # FR-M7-04: `rbs-inline` annotations are opt-out; files parse lazily.
+      # FR-M7-04: `rbs-inline` annotations are opt-out; files parse lazily. The loader lets aliases and interfaces in
+      # annotations resolve against the environment when it becomes ready.
       def build_inline
         return nil unless settings.enabled?(:inline_types)
 
-        Rbs::Inline.new(@indexer, log: @log)
+        Rbs::Inline.new(@indexer, log: @log, loader: @rbs_loader)
       rescue => e
         @log&.error("Failed to set up rbs-inline: #{e.class}: #{e.message}")
         nil

@@ -13,18 +13,24 @@ module RubyLsp
     module Rbs
       # Answers signature lookups from `rbs-inline` annotations (`#:` comments and `@rbs` tags) in workspace files
       # (FR-M7-04, D5). Files are parsed lazily, only when they opt in with the `# rbs_inline: enabled` magic comment,
-      # and cached per path until watched files change. Never raises: failures degrade to nil (NFR-R1).
+      # and cached per path until watched files change. Aliases and interfaces resolve against the RBS environment when
+      # a loader is available. Never raises: failures degrade to nil (NFR-R1).
       class Inline
         MAGIC = "rbs_inline"
 
-        def initialize(adapter, log: nil, enabled: true)
+        def initialize(adapter, log: nil, loader: nil, enabled: true)
           @adapter = adapter
           @log = log
+          @loader = loader
           @enabled = enabled
           @files = {}
+          @converter = nil
           @mutex = Mutex.new
 
-          adapter.subscribe { invalidate } if enabled
+          if enabled
+            adapter.subscribe { invalidate }
+            @loader&.subscribe { invalidate }
+          end
         end
 
         # The inline signature for `name` on `owner` declared in the file at `uri`, or nil.
@@ -35,7 +41,10 @@ module RubyLsp
         end
 
         def invalidate
-          @mutex.synchronize { @files.clear }
+          @mutex.synchronize do
+            @files.clear
+            @converter = nil
+          end
         end
 
         private
@@ -201,8 +210,10 @@ module RubyLsp
           end
         end
 
+        # Aliases and interfaces resolve against the loaded environment; `invalidate` drops the converter so a
+        # converter built while the loader was still running does not pin `Unknown`.
         def converter
-          @converter ||= Converter.new
+          @converter ||= Converter.new(environment: @loader&.environment, builder: @loader&.builder)
         end
 
         def path_for(uri)

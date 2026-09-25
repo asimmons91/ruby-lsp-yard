@@ -17,6 +17,7 @@ module RubyLsp
         WIDGET = "FixtureProject::Widget"
         LIBRARY = "FixtureProject::MacroLibrary"
         LABELED = "FixtureProject::Labeled"
+        ARTICLE = "FixtureProject::Article"
 
         class << self
           def core_index
@@ -73,10 +74,29 @@ module RubyLsp
           assert_equal Types::Instance.new("Integer"), counter.return_types
         end
 
+        def test_expands_named_macros_inside_attached_macro_data
+          entries = @store.entries_for(ARTICLE)
+
+          slug = entries["slug"]
+          refute_nil slug
+          assert_equal Types::Instance.new("String"), slug.return_types
+
+          created_at = entries["created_at"]
+          refute_nil created_at
+          assert_equal Types::Instance.new("Time"), created_at.return_types
+        end
+
         def test_expands_named_macro_invocations
           expanded = @store.expand_comments("@macro returnself", method_name: "duplicate")
 
           assert_includes expanded, "@return [self] returns itself"
+        end
+
+        def test_expands_repeated_named_macro_invocations
+          expanded = @store.expand_comments("@macro returnself\nmiddle\n@macro returnself", method_name: "duplicate")
+
+          assert_equal 2, expanded.scan("@return [self] returns itself").size
+          assert_includes expanded, "middle"
         end
 
         def test_cycles_terminate

@@ -51,14 +51,7 @@ module RubyLsp
           return comments unless @enabled
           return comments unless text.include?("@macro") || text.include?("@!macro")
 
-          visited = []
-          EXPANSION_LIMIT.times do
-            expanded = expand_once(text, method_name: method_name, visited: visited)
-            break if expanded == text
-
-            text = expanded
-          end
-          text
+          expand_text(text, method_name: method_name, chain: [])
         rescue => e
           @log&.error("Macro expansion failed: #{e.class}: #{e.message}")
           comments
@@ -70,7 +63,11 @@ module RubyLsp
 
         private
 
-        def expand_once(text, method_name:, visited:)
+        # Each invocation expands independently, so a macro used twice in one docstring expands twice; `chain` tracks
+        # only the current expansion path, which still terminates cycles (NFR-R3).
+        def expand_text(text, method_name:, chain:)
+          return text if chain.size >= EXPANSION_LIMIT
+
           lines = text.lines
           changed = false
 
@@ -81,13 +78,10 @@ module RubyLsp
 
             name = match[2]
             data = macro(name)
-            if data.nil? || visited.include?(name)
-              next line
-            end
+            next line if data.nil? || chain.include?(name)
 
-            visited << name
             changed = true
-            expand_data(data, method_name, match[1])
+            expand_text(expand_data(data, method_name, match[1]), method_name: method_name, chain: chain + [name])
           end.join
 
           changed ? expanded : text
@@ -112,9 +106,10 @@ module RubyLsp
         def expand_data(data, method_name, indentation)
           macro_data = data.respond_to?(:data) ? data.data : data
           expanded = @expander.expand(macro_data, params: [method_name].compact, source: "")
-          expanded.lines.map do |line|
+          indented = expanded.lines.map do |line|
             line.strip.empty? ? "\n" : "#{indentation}#{line}"
           end.join
+          indented.end_with?("\n") ? indented : "#{indented}\n"
         end
 
         def macros

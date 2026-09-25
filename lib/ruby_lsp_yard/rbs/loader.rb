@@ -91,27 +91,32 @@ module RubyLsp
 
         private
 
+        # NFR-R1: each rung drops one input (first the collection, then stdlib, then both) so a broken collection cannot
+        # take core/stdlib signatures down with it; `Environment.from_loader` parses collection files eagerly and can
+        # fail after `add_collection` has already succeeded.
         def build_environment
           libraries = each_library
-          build_from(libraries)
-        rescue => e
-          @log&.warn("RBS environment with stdlib failed (#{e.class}: #{e.message}); falling back to core")
-          begin
-            build_from([])
-          rescue => core_error
-            @log&.error("RBS core environment failed: #{core_error.class}: #{core_error.message}")
-            nil
+          last_error = nil
+
+          [[libraries, true], [libraries, false], [[], true], [[], false]].each do |libs, collection|
+            return build_from(libs, collection: collection)
+          rescue => e
+            last_error = e
+            @log&.warn("RBS environment build failed (#{e.class}: #{e.message})")
           end
+
+          @log&.error("RBS core environment failed: #{last_error.class}: #{last_error.message}")
+          nil
         end
 
-        def build_from(libraries)
+        def build_from(libraries, collection: true)
           loader = ::RBS::EnvironmentLoader.new
           libraries.each do |library|
             loader.add(library: library) if loader.has_library?(library: library, version: nil)
           rescue ::RBS::EnvironmentLoader::UnknownLibraryError
             nil
           end
-          add_collection(loader)
+          add_collection(loader) if collection
           ::RBS::Environment.from_loader(loader).resolve_type_names
         end
 
