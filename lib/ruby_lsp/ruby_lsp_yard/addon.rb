@@ -30,11 +30,15 @@ module RubyLsp
       # 0.26 only runs linters the user configures, so add-on linters are never auto-detected.
       LINTER_ID = "yard"
 
+      # NFR-CFG1: the key users configure under `rubyLsp.addonSettings`. It is deliberately separate from `name`,
+      # which stays human-readable in Ruby LSP's UI, telemetry and error messages.
+      SETTINGS_KEY = "rubyLspYard"
+
       attr_reader :settings, :indexer, :signature_store, :inference, :log, :rbs_loader, :rbs_source, :gem_cache,
         :diagnostics, :macros, :domains, :solargraph, :inline
 
       def activate(global_state, outgoing_queue)
-        @settings = Settings.new(global_state.settings_for_addon(name))
+        @settings = Settings.new(global_state.settings_for_addon(SETTINGS_KEY))
         @log = Log.new(outgoing_queue, level: settings.log_level)
         @indexer = Indexer.for(global_state, log: log)
         @rbs_loader = build_rbs_loader(global_state)

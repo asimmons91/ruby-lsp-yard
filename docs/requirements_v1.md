@@ -119,7 +119,8 @@ The model must be able to represent at least:
 - **NFR-C4:** Produces no duplicate results when used alongside ruby-lsp-rails and other common add-ons.
 
 ### 4.4 Configuration
-- **NFR-CFG1:** Settings are read from Ruby LSP's per-add-on settings (`addonSettings` keyed by the add-on's name). 🔍 Verify the API in the target version.
+- **NFR-CFG1:** Settings are read from Ruby LSP's per-add-on settings (`addonSettings` keyed by the add-on's settings
+  key, `rubyLspYard` for this add-on; `Addon#name` stays human-readable). 🔍 Verify the API in the target version.
 - **NFR-CFG2:** Every major feature can be switched off independently: completion, hover, signature help, definition, inlay hints, diagnostics, authoring help.
 - **NFR-CFG3:** Defaults work with no configuration at all.
 
@@ -178,7 +179,7 @@ consulting add-ons.
 | Code lens | ✅ | `Addon#create_code_lens_listener`, invoked by `Requests::CodeLens` | M4 fallback for comment skeleton generation (FR-M4-06) |
 | Diagnostics / linter registration | ⚠️ | `GlobalState#register_formatter(identifier, instance)` supports `run_diagnostic`, but the linter only activates when the user lists the identifier in `rubyLsp.linters`; add-on linters are not auto-detected | M5 (FR-M5-01) implemented: the add-on registers `"yard"` and the README documents the `rubyLsp.linters` requirement. Upstream owner for auto-detection |
 | On-type formatting | ❌ | No add-on hook | Descope: not needed by V1 |
-| Settings | ✅ | `GlobalState#settings_for_addon(name)` reads `addonSettings` keyed by the add-on's name | M0 (FR-M0-06) |
+| Settings | ✅ | `GlobalState#settings_for_addon(name)` reads `addonSettings` keyed by the add-on's settings key (`rubyLspYard`) | M0 (FR-M0-06) |
 | File watching | ✅ | `Addon#workspace_did_change_watched_files(changes)`; the server registers `**/*.rb` watchers for add-ons that respond to it | M0 (`Indexer::Adapter#on_change`) |
 
 Bonus hooks available in 0.26.x and unused by V1: document symbols, semantic highlighting, discover tests and formatter

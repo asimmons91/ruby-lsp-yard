@@ -2,7 +2,7 @@
 
 module RubyLsp
   module Yard
-    # Per-add-on settings, read from `addonSettings["Ruby LSP YARD"]` (NFR-CFG1). Defaults work with no
+    # Per-add-on settings, read from `addonSettings["rubyLspYard"]` (NFR-CFG1). Defaults work with no
     # configuration at all (NFR-CFG3) and malformed input never raises (NFR-R1).
     class Settings
       FEATURES = {

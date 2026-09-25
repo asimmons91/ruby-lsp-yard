@@ -127,14 +127,19 @@ module RubyLsp
         end
       end
 
-      def test_addon_settings_are_read_from_addon_settings_key
-        with_server do |server, _uri|
-          server.global_state.apply_options({
-            initializationOptions: {addonSettings: {"Ruby LSP YARD" => {enableHover: false}}}
-          })
+      def test_addon_settings_are_read_from_the_settings_key
+        addon = activate_addon_with_raw_settings({
+          ::RubyLsp::Yard::Addon::SETTINGS_KEY => {enableHover: false}
+        })
 
-          assert_equal({enableHover: false}, server.global_state.settings_for_addon("Ruby LSP YARD"))
-        end
+        refute addon.settings.enabled?(:hover)
+        assert addon.settings.enabled?(:completion)
+      end
+
+      def test_addon_settings_ignore_the_display_name_key
+        addon = activate_addon_with_raw_settings({"Ruby LSP YARD" => {enableHover: false}})
+
+        assert addon.settings.enabled?(:hover)
       end
 
       private
@@ -150,6 +155,17 @@ module RubyLsp
           @addon = ::RubyLsp::Yard::Addon.new
           @addon.activate(global_state, Thread::Queue.new)
         end
+        @addon
+      end
+
+      # Activates the add-on with a real `GlobalState` whose `addonSettings` are `settings` verbatim, so the settings
+      # key lookup is exercised end to end.
+      def activate_addon_with_raw_settings(settings)
+        global_state = RubyLsp::GlobalState.new
+        global_state.apply_options({initializationOptions: {addonSettings: settings}})
+
+        @addon = ::RubyLsp::Yard::Addon.new
+        @addon.activate(global_state, Thread::Queue.new)
         @addon
       end
 
